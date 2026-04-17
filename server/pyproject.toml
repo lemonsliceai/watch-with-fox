@@ -1,0 +1,42 @@
+[project]
+name = "podcast-commentary-server"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "livekit-api~=1.0",
+    "livekit-agents~=1.4.6",
+    "fastapi[standard]",
+    "pydantic-settings",
+    "python-dotenv",
+    "asyncpg",
+    "httpx>=0.28.1",
+    # [default] extra pulls in yt-dlp-ejs, which ships the challenge-solver JS
+    # bundles yt-dlp needs to talk to modern YouTube clients (post-SABR, 2025-11+).
+    # Without this extra, formats get silently skipped and audio extraction fails
+    # with "Requested format is not available".
+    "yt-dlp[default]>=2025.11.12",
+]
+
+[dependency-groups]
+agent = [
+    "livekit-agents[silero,groq,elevenlabs,turn-detector,lemonslice]~=1.4.6",
+    "livekit-agents~=1.4.6",
+]
+dev = [
+    "ruff",
+    "pytest",
+    "pytest-asyncio",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+default-groups = ["dev", "agent"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/podcast_commentary"]
+
+[tool.ruff]
+line-length = 100

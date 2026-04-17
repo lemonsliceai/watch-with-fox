@@ -1,0 +1,51 @@
+# https://mstro.app
+.mstro/
+
+# Claude Code
+.claude/
+
+# Product prompt (internal)
+product_prompt.md
+
+# Environment
+.env
+.env.local
+.env.production
+*.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+
+# Node
+node_modules/
+.next/
+out/
+
+# OS
+.DS_Store
+
+# Large media (store in S3/CDN, not in git)
+*.webm
+*.mp4
+*.mp3
+# Keep small compressed copies used by the frontend
+!web/public/rumi-idle.mp4
+!web/public/rumi-idle.webm
+
+# Deployment configs (contain instance-specific values)
+server/fly.toml
+server/livekit.toml
+
+# Build artifacts
+dist/
+build/
+
+# Lock files (uv.lock is committed)
+package-lock.json
+.vercel

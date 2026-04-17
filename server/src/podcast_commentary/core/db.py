@@ -1,0 +1,226 @@
+import json
+import logging
+from typing import Any
+
+import asyncpg
+
+from podcast_commentary.core.config import settings
+
+logger = logging.getLogger("podcast-commentary.db")
+
+_pool: asyncpg.Pool | None = None
+_pool_unavailable_warned: bool = False
+
+
+async def _get_pool() -> asyncpg.Pool:
+    global _pool
+    if _pool is None:
+        if not settings.DATABASE_URL:
+            raise RuntimeError("DATABASE_URL not set")
+        _pool = await asyncpg.create_pool(
+            settings.DATABASE_URL,
+            min_size=1,
+            max_size=5,
+            command_timeout=15,
+        )
+    return _pool
+
+
+async def _try_get_pool() -> asyncpg.Pool | None:
+    """Return the pool if DATABASE_URL is configured, else log once and return None.
+
+    Agent-side logging paths use this so that a missing DB doesn't crash the
+    session — we just lose persistence for that run.
+    """
+    global _pool_unavailable_warned
+    if not settings.DATABASE_URL:
+        if not _pool_unavailable_warned:
+            logger.warning("DATABASE_URL not set — conversation persistence disabled")
+            _pool_unavailable_warned = True
+        return None
+    try:
+        return await _get_pool()
+    except Exception:
+        if not _pool_unavailable_warned:
+            logger.warning("Failed to open DB pool — conversation persistence disabled", exc_info=True)
+            _pool_unavailable_warned = True
+        return None
+
+
+async def warm_pool() -> None:
+    if not settings.DATABASE_URL:
+        logger.warning("DATABASE_URL not set — skipping DB pool warm-up")
+        return
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        await conn.fetchval("SELECT 1")
+    logger.info("Database pool warmed")
+
+
+async def run_migrations() -> None:
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS sessions (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                video_url TEXT NOT NULL,
+                video_title TEXT,
+                room_name TEXT NOT NULL UNIQUE,
+                audio_stream_url TEXT,
+                status TEXT DEFAULT 'created',
+                created_at TIMESTAMPTZ DEFAULT now(),
+                ended_at TIMESTAMPTZ
+            )
+        """)
+        # Add columns for existing tables (idempotent)
+        await conn.execute("""
+            ALTER TABLE sessions ADD COLUMN IF NOT EXISTS audio_stream_url TEXT
+        """)
+        await conn.execute("""
+            ALTER TABLE sessions ADD COLUMN IF NOT EXISTS summary TEXT
+        """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS commentary_logs (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                session_id UUID REFERENCES sessions(id),
+                timestamp_ms INTEGER NOT NULL,
+                transcript_context TEXT,
+                commentary TEXT NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT now()
+            )
+        """)
+        # Unified conversation log: every utterance by every speaker in the
+        # room (podcast audio STT, user push-to-talk STT, agent TTS replies),
+        # plus system events like rolling summaries. Enables historic replay
+        # and post-hoc analysis of each session.
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS conversation_messages (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                session_id UUID REFERENCES sessions(id) ON DELETE CASCADE,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                metadata JSONB,
+                created_at TIMESTAMPTZ DEFAULT now()
+            )
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_conversation_messages_session
+            ON conversation_messages(session_id, created_at)
+        """)
+    logger.info("Migrations complete")
+
+
+async def create_session(
+    room_name: str,
+    video_url: str,
+    video_title: str | None = None,
+    audio_stream_url: str | None = None,
+) -> str:
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO sessions (room_name, video_url, video_title, audio_stream_url)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id
+            """,
+            room_name,
+            video_url,
+            video_title,
+            audio_stream_url,
+        )
+        return str(row["id"])
+
+
+async def get_session_audio_url(session_id: str) -> str | None:
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        return await conn.fetchval(
+            "SELECT audio_stream_url FROM sessions WHERE id = $1", session_id
+        )
+
+
+async def get_session(session_id: str) -> dict | None:
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT * FROM sessions WHERE id = $1", session_id)
+        return dict(row) if row else None
+
+
+async def end_session(session_id: str) -> None:
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE sessions SET status = 'ended', ended_at = now() WHERE id = $1",
+            session_id,
+        )
+
+
+async def log_commentary(
+    session_id: str, timestamp_ms: int, transcript_context: str, commentary: str
+) -> None:
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO commentary_logs (session_id, timestamp_ms, transcript_context, commentary)
+            VALUES ($1, $2, $3, $4)
+            """,
+            session_id,
+            timestamp_ms,
+            transcript_context,
+            commentary,
+        )
+
+
+async def log_conversation_message(
+    session_id: str,
+    role: str,
+    content: str,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    """Append a single utterance/event to the conversation log.
+
+    `role` is one of: 'podcast' (STT of the YouTube audio), 'user' (STT of
+    the listener's push-to-talk mic), 'agent' (Fox's reply), 'system'
+    (rolling summary snapshots and lifecycle events). Silently skips if
+    DATABASE_URL isn't configured so local dev without a DB still works.
+    """
+    pool = await _try_get_pool()
+    if pool is None:
+        return
+    try:
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO conversation_messages (session_id, role, content, metadata)
+                VALUES ($1, $2, $3, $4::jsonb)
+                """,
+                session_id,
+                role,
+                content,
+                json.dumps(metadata) if metadata else None,
+            )
+    except Exception:
+        logger.warning(
+            "Failed to persist conversation message [role=%s, session=%s]",
+            role, session_id, exc_info=True,
+        )
+
+
+async def update_session_summary(session_id: str, summary: str) -> None:
+    """Store the latest rolling summary on the session row."""
+    pool = await _try_get_pool()
+    if pool is None:
+        return
+    try:
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE sessions SET summary = $1 WHERE id = $2",
+                summary,
+                session_id,
+            )
+    except Exception:
+        logger.warning(
+            "Failed to update session summary [session=%s]", session_id, exc_info=True
+        )

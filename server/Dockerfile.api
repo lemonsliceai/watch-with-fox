@@ -1,0 +1,34 @@
+# Lightweight container for the FastAPI server.
+# Skips ML/audio deps (--no-group agent).
+# syntax=docker/dockerfile:1
+
+ARG PYTHON_VERSION=3.13
+FROM ghcr.io/astral-sh/uv:python${PYTHON_VERSION}-bookworm-slim
+
+ENV PYTHONUNBUFFERED=1
+
+ARG UID=10001
+RUN adduser \
+    --disabled-password \
+    --gecos "" \
+    --home "/app" \
+    --shell "/sbin/nologin" \
+    --uid "${UID}" \
+    appuser
+
+WORKDIR /app
+
+COPY pyproject.toml uv.lock ./
+RUN mkdir -p src
+RUN uv sync --locked --no-group agent --no-group dev --no-install-project
+
+COPY . .
+
+RUN uv sync --locked --no-group agent --no-group dev --no-editable
+RUN chown -R appuser:appuser /app
+
+USER appuser
+
+EXPOSE 8080
+
+CMD [".venv/bin/uvicorn", "podcast_commentary.api.app:app", "--host", "0.0.0.0", "--port", "8080", "--proxy-headers", "--forwarded-allow-ips", "*"]
