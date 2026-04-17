@@ -118,7 +118,7 @@ You'll need accounts and API keys from these services:
 
 ```bash
 # Clone the repo
-git clone https://github.com/your-org/watch-with-fox.git
+git clone https://github.com/lemonsliceai/watch-with-fox.git
 cd watch-with-fox
 
 # Install Python dependencies
@@ -259,19 +259,12 @@ On Vercel, set `NEXT_PUBLIC_API_URL` in the project's Environment Variables dash
 
 ## Contributing
 
-Contributions are welcome! Please open an issue or submit a pull request.
-
-<!-- TODO: Add CONTRIBUTING.md with detailed guidelines, then link it here. -->
-<!-- TODO: Add CODE_OF_CONDUCT.md (e.g. Contributor Covenant), then link it here. -->
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
 ## Security
 
-<!-- TODO: Add SECURITY.md with vulnerability reporting instructions, then link it here. -->
-
-To report a security vulnerability, please email the maintainers directly rather than opening a public issue.
+See [SECURITY.md](SECURITY.md) for vulnerability reporting instructions.
 
 ## License
 
-This project is licensed under the MIT License.
-
-<!-- TODO: Add a LICENSE file to the repository root. -->
+This project is licensed under the MIT License — see [LICENSE](LICENSE) for details.

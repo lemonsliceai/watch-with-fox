@@ -1,6 +1,13 @@
 {
-  "name": "web",
+  "name": "watch-with-fox",
   "version": "0.1.0",
+  "description": "AI comedian avatar that delivers real-time comedic commentary while you watch YouTube",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lemonsliceai/watch-with-fox.git",
+    "directory": "web"
+  },
   "private": true,
   "scripts": {
     "dev": "NEXT_PUBLIC_API_URL=http://localhost:8080 next dev",

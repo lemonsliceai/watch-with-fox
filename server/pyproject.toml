@@ -1,6 +1,8 @@
 [project]
-name = "podcast-commentary-server"
+name = "watch-with-fox-server"
 version = "0.1.0"
+description = "AI comedian avatar that delivers real-time comedic commentary while you watch YouTube"
+license = "MIT"
 requires-python = ">=3.11"
 dependencies = [
     "livekit-api~=1.0",
