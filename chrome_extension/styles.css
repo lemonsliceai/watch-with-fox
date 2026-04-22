@@ -509,124 +509,15 @@ body::before {
   box-shadow: var(--shadow-sm);
 }
 
-.control-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.control-label {
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--muted);
-  width: 40px;
-  flex-shrink: 0;
-}
-
-.fox-label {
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-weight: 500;
-  color: var(--accent);
-  text-transform: none;
-  font-size: 12px;
-  letter-spacing: 0;
-}
-
-/* ── Range sliders (game-style) ── */
-input[type="range"] {
-  -webkit-appearance: none;
-  appearance: none;
-  flex: 1;
-  height: 24px;
-  background: transparent;
-  cursor: pointer;
-}
-
-input[type="range"]::-webkit-slider-runnable-track {
-  height: 6px;
-  border-radius: 3px;
-  background: var(--sunken);
-  border: 1px solid var(--edge);
-}
-
-input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--accent);
-  border: 2px solid var(--accent-hover);
-  margin-top: -7px;
-  box-shadow: 0 0 8px var(--accent-glow);
-  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s;
-}
-
-input[type="range"]::-webkit-slider-thumb:hover {
-  transform: scale(1.2);
-  box-shadow: 0 0 14px rgba(212, 132, 90, 0.4);
-}
-
-input[type="range"]::-webkit-slider-thumb:active {
-  transform: scale(0.95);
-}
-
 /* ── Action buttons ── */
 .control-actions {
   display: flex;
   gap: 8px;
-  margin-top: 4px;
-}
-
-/* Hold to talk — chunky game button */
-.btn-talk {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 10px 14px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--secondary);
-  background: var(--elevated);
-  border: 2px solid var(--edge);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-  user-select: none;
-  touch-action: none;
-  box-shadow: var(--shadow-sm);
-}
-
-.btn-talk:hover {
-  color: var(--warm);
-  background: var(--edge);
-  border-color: var(--edge-warm);
-  transform: translateY(-1px);
-}
-
-.btn-talk.active {
-  color: var(--deep);
-  background: var(--accent);
-  border-color: var(--accent-hover);
-  box-shadow: var(--shadow-glow), var(--shadow-sm);
-  transform: scale(1.04);
-}
-
-.btn-talk.active .mic-icon {
-  animation: mic-pulse 0.8s ease-in-out infinite;
-}
-
-.mic-icon {
-  width: 16px;
-  height: 16px;
 }
 
 /* End session — danger button */
 .btn-end {
+  flex: 1;
   padding: 10px 14px;
   font-size: 12px;
   font-weight: 600;
@@ -708,12 +599,6 @@ input[type="range"]::-webkit-slider-thumb:active {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
-}
-
-/* Mic icon pulse when active */
-@keyframes mic-pulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.15); }
 }
 
 /* ════════════════════════════════════════════

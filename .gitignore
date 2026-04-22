@@ -34,9 +34,6 @@ out/
 *.webm
 *.mp4
 *.mp3
-# Keep small compressed copies used by the frontend
-!web/public/rumi-idle.mp4
-!web/public/rumi-idle.webm
 
 # Deployment configs (contain instance-specific values)
 server/fly.toml

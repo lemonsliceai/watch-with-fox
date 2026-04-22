@@ -66,15 +66,10 @@ async def run_migrations() -> None:
                 video_url TEXT NOT NULL,
                 video_title TEXT,
                 room_name TEXT NOT NULL UNIQUE,
-                audio_stream_url TEXT,
                 status TEXT DEFAULT 'created',
                 created_at TIMESTAMPTZ DEFAULT now(),
                 ended_at TIMESTAMPTZ
             )
-        """)
-        # Add columns for existing tables (idempotent)
-        await conn.execute("""
-            ALTER TABLE sessions ADD COLUMN IF NOT EXISTS audio_stream_url TEXT
         """)
         await conn.execute("""
             ALTER TABLE sessions ADD COLUMN IF NOT EXISTS summary TEXT
@@ -114,30 +109,20 @@ async def create_session(
     room_name: str,
     video_url: str,
     video_title: str | None = None,
-    audio_stream_url: str | None = None,
 ) -> str:
     pool = await _get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            INSERT INTO sessions (room_name, video_url, video_title, audio_stream_url)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO sessions (room_name, video_url, video_title)
+            VALUES ($1, $2, $3)
             RETURNING id
             """,
             room_name,
             video_url,
             video_title,
-            audio_stream_url,
         )
         return str(row["id"])
-
-
-async def get_session_audio_url(session_id: str) -> str | None:
-    pool = await _get_pool()
-    async with pool.acquire() as conn:
-        return await conn.fetchval(
-            "SELECT audio_stream_url FROM sessions WHERE id = $1", session_id
-        )
 
 
 async def get_session(session_id: str) -> dict | None:

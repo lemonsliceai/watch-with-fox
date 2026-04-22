@@ -16,6 +16,32 @@ from podcast_commentary.agent.fox_config import CONFIG
 # without reaching into the config object.
 COMEDIAN_SYSTEM_PROMPT = CONFIG.persona.system_prompt
 
+# Sentinel that ``comedian.llm_node`` scans for to decide whether to buffer
+# the full LLM response and parse candidates. Persona-neutral so any preset
+# that enables verbalized sampling gets selection for free.
+SAMPLING_SENTINEL = "[[VS_CANDIDATES]]"
+
+
+def _sampling_instruction() -> str | None:
+    """Pipeline-level output-format directive appended when VS is enabled.
+
+    Persona-neutral: never says "joke" or "punchline" — each preset's own
+    system prompt + CTA decide what a ``line`` is. Returns None when VS
+    is off so the block is omitted from the prompt entirely.
+    """
+    n = CONFIG.sampling.num_candidates
+    if n <= 1:
+        return None
+    return (
+        f"{SAMPLING_SENTINEL}\n"
+        f"[OUTPUT FORMAT — pipeline spec, not creative direction]\n"
+        f"Return strict JSON only — no prose, no markdown fences: "
+        f'{{"candidates":[{{"line":"...","p":0.0}}]}}\n'
+        f"Produce exactly {n} candidates. Each `line` is a complete response "
+        f"written to the rules above. `p` is your own confidence (0.0-1.0) "
+        f"that this candidate lands best. Stay in character across all of them."
+    )
+
 
 def _format_context_bundle(
     *,
@@ -51,7 +77,7 @@ def build_commentary_request(
     commentary_history: list[str],
     trigger_reason: str,
     energy_level: str = "amused",
-    angle: dict[str, str] | None = None,
+    angle: str | None = None,
 ) -> str:
     """Assemble the per-turn prompt for unsolicited commentary."""
     if angle is None:
@@ -64,8 +90,12 @@ def build_commentary_request(
 
     parts.append(f"[WHY YOU'RE SPEAKING NOW]\n{trigger_reason}")
     parts.append(f"[ENERGY] {energy_level}")
-    parts.append(f"[ANGLE FOR THIS COMMENT — {angle['name']}]\n{angle['instruction']}")
+    parts.append(f"[LENS: {angle}]")
     parts.append(CONFIG.persona.commentary_cta)
+
+    sampling = _sampling_instruction()
+    if sampling:
+        parts.append(sampling)
 
     return "\n\n".join(parts)
 
@@ -75,7 +105,7 @@ def build_user_reply_request(
     user_text: str,
     recent_transcript: str,
     commentary_history: list[str],
-    angle: dict[str, str] | None = None,
+    angle: str | None = None,
 ) -> str:
     """Assemble the per-turn prompt for a push-to-talk reply."""
     if angle is None:
@@ -87,7 +117,11 @@ def build_user_reply_request(
     )
 
     parts.append(f'[YOUR FRIEND ON THE COUCH JUST SPOKE TO YOU]\nThey said: "{user_text}"')
-    parts.append(f"[FLAVOR FOR YOUR REPLY — {angle['name']}]\n{angle['instruction']}")
+    parts.append(f"[LENS: {angle}]")
     parts.append(CONFIG.persona.user_reply_cta)
+
+    sampling = _sampling_instruction()
+    if sampling:
+        parts.append(sampling)
 
     return "\n\n".join(parts)

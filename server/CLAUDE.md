@@ -2,6 +2,8 @@
 
 Python 3.11+ backend with two processes: an HTTP API server and a LiveKit AI agent.
 
+The Chrome extension is the only frontend — it captures YouTube tab audio via `chrome.tabCapture` and publishes it as a LiveKit track named `podcast-audio`. The agent subscribes to that track for STT.
+
 ## Commands
 
 ```bash
@@ -18,23 +20,21 @@ uv run pytest                    # test
 
 ```
 src/podcast_commentary/
-├── api/           # FastAPI HTTP server (sessions, tokens, audio proxy)
+├── api/           # FastAPI HTTP server (sessions, tokens)
 │   ├── app.py     # App factory, CORS, lifespan (pool warmup + migrations)
-│   └── routes/sessions.py  # All endpoints
+│   └── routes/sessions.py  # Session create / get / end + /health
 ├── agent/         # LiveKit agent (STT → LLM → TTS → avatar)
 │   ├── main.py    # Entrypoint, wires STT/LLM/TTS/VAD plugins
 │   ├── comedian.py        # ComedianAgent: phase state machine, commentary orchestration
 │   ├── commentary.py      # CommentaryTimer, FullTranscript, timing constants
-│   ├── podcast_pipeline.py # ffmpeg + Groq STT stream + VAD
-│   ├── podcast_player.py  # ffmpeg subprocess (16kHz mono PCM)
+│   ├── podcast_pipeline.py # Subscribes to podcast-audio track + Groq STT
 │   ├── speech_gate.py     # Gate logic for "is Fox speaking?"
 │   ├── user_turn.py       # Hold-to-talk state machine with grace timer
 │   ├── prompts.py         # System prompts and context builders
 │   └── angles.py          # 7 comedic angle definitions (Silicon Valley style)
 └── core/          # Shared across api and agent
     ├── config.py  # Pydantic BaseSettings (loads .env)
-    ├── db.py      # asyncpg pool, migrations, CRUD
-    └── youtube.py # yt-dlp audio extraction + bot detection workarounds
+    └── db.py      # asyncpg pool, migrations, CRUD
 ```
 
 ## Agent phase state machine
@@ -50,7 +50,6 @@ ComedianAgent uses a `FoxPhase` enum: INTRO → LISTENING → COMMENTATING → U
 
 ## Gotchas
 
-- **yt-dlp YouTube bot detection (2026):** Use `player_client=["default"]` — the `web`/`web_safari` clients have broken URL extraction, `tv` has DRM experiments. The `[default]` extra in pyproject.toml is required for JS challenge-solver bundles.
 - **Fire-and-forget tasks:** Never use bare `asyncio.create_task()`. Use `_fire_and_forget()` which attaches a done-callback to surface exceptions.
 - **Speech handle timeouts:** LemonSlice avatar can hang on `playback_finished` RPC. Always use `INTRO_PLAYOUT_TIMEOUT` (15s) and `COMMENTARY_PLAYOUT_TIMEOUT` (20s) when waiting on speech handles.
 - **Database migrations** run inline in the FastAPI lifespan hook via `run_migrations()` in db.py. All DDL is idempotent (`CREATE TABLE IF NOT EXISTS`).

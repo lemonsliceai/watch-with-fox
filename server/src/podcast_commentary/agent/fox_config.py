@@ -20,6 +20,7 @@ from __future__ import annotations
 import importlib
 import logging
 from dataclasses import dataclass
+from typing import Literal
 
 from podcast_commentary.core.config import settings
 
@@ -37,7 +38,7 @@ class PersonaConfig:
 
     system_prompt: str
     intro_prompt: str
-    comedic_angles: tuple[dict[str, str], ...]
+    comedic_angles: tuple[str, ...]
     angle_lookback: int
     commentary_cta: str
     user_reply_cta: str
@@ -107,6 +108,34 @@ class PlayoutConfig:
 
 
 @dataclass(frozen=True)
+class SamplingConfig:
+    """Verbalized-sampling controls — advanced output-diversity tuning.
+
+    With ``num_candidates == 1`` (default) the model writes a single line
+    and ships it verbatim — current, lowest-latency behaviour.
+
+    With ``num_candidates > 1`` the model generates N candidates with
+    self-assigned confidence scores in one shot; ``selection`` picks
+    which one reaches TTS. Based on Zhang et al. 2025, "Verbalized
+    Sampling" (arXiv 2510.01171) — reports 1.6-2.1x diversity gain on
+    creative tasks, fights RLHF mode collapse without temperature hacks.
+
+    This is pipeline-level, persona-agnostic. Each preset opts in by
+    setting ``num_candidates`` and scaling ``LLMConfig.max_tokens`` to
+    fit N serialised candidates in JSON.
+    """
+
+    # 1 = verbalized sampling off (single-response, streamed to TTS).
+    # N>1 = request N candidates in one JSON response, pick one via
+    # ``selection``. Full response is buffered before TTS starts.
+    num_candidates: int = 1
+    # ``max_prob``: always ship the highest-confidence candidate.
+    # ``top_k_random``: uniform-random pick from top-3 — adds variance,
+    # fits personas where predictability is off-brand (e.g. chaos).
+    selection: Literal["max_prob", "top_k_random"] = "max_prob"
+
+
+@dataclass(frozen=True)
 class FoxConfig:
     """All tunable Fox behaviour, grouped by subsystem."""
 
@@ -120,6 +149,7 @@ class FoxConfig:
     vad: VADConfig
     avatar: AvatarConfig
     playout: PlayoutConfig
+    sampling: SamplingConfig = SamplingConfig()
 
 
 # ---------------------------------------------------------------------------

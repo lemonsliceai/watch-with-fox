@@ -4,7 +4,7 @@
 
   * `SpeechGate` — authoritative "is Fox speaking?" gate + `speak()`
   * `UserTurnTracker` — hold-to-talk state machine
-  * `PodcastPipeline` — podcast STT stream + ffmpeg player + consumer
+  * `PodcastPipeline` — podcast STT stream + LiveKit track consumer
   * `CommentaryTimer` — MIN_GAP / burst rules between turns
   * `FullTranscript` — rolling podcast transcript
 
@@ -21,9 +21,11 @@ import asyncio
 import enum
 import json
 import logging
+import random
+from collections.abc import AsyncIterable
 from typing import Any
 
-from livekit.agents import Agent, llm
+from livekit.agents import Agent, ModelSettings, llm
 from livekit.rtc._proto.track_pb2 import TrackSource
 
 from podcast_commentary.agent.commentary import (
@@ -34,6 +36,7 @@ from podcast_commentary.agent.commentary import (
 from podcast_commentary.agent.fox_config import CONFIG
 from podcast_commentary.agent.podcast_pipeline import PodcastPipeline
 from podcast_commentary.agent.prompts import (
+    SAMPLING_SENTINEL,
     build_commentary_request,
     build_user_reply_request,
     pick_angle,
@@ -76,6 +79,82 @@ POST_SPEECH_DELAY = CONFIG.timing.post_speech_safety_s
 SILENCE_FALLBACK_DELAY = CONFIG.timing.silence_fallback_s
 INTRO_PLAYOUT_TIMEOUT = CONFIG.playout.intro_timeout_s
 COMMENTARY_PLAYOUT_TIMEOUT = CONFIG.playout.commentary_timeout_s
+
+
+# ---------------------------------------------------------------------------
+# Verbalized-sampling helpers — persona-neutral: never assume "joke"/"line"
+# semantics, just route a string picked by the configured strategy.
+# ---------------------------------------------------------------------------
+
+
+def _prompt_uses_sampling(chat_ctx: llm.ChatContext) -> bool:
+    """True when the most recent user message carries the sampling sentinel."""
+    for item in reversed(chat_ctx.items):
+        if not isinstance(item, llm.ChatMessage) or item.role != "user":
+            continue
+        text = item.text_content or ""
+        return SAMPLING_SENTINEL in text
+    return False
+
+
+def _chunk_text(chunk: Any) -> str:
+    """Extract text from a streaming LLM chunk (``str`` or ``ChatChunk``)."""
+    if isinstance(chunk, str):
+        return chunk
+    if isinstance(chunk, llm.ChatChunk) and chunk.delta and chunk.delta.content:
+        return chunk.delta.content
+    return ""
+
+
+def _select_candidate(raw: str, strategy: str) -> str:
+    """Parse the VS JSON envelope and pick one candidate's ``line``.
+
+    Falls back to the raw text if anything about the JSON is wrong — better
+    a slightly-malformed line reaches TTS than a silent turn.
+    """
+    payload = raw.strip()
+    # Models occasionally wrap JSON in ```json fences despite instructions.
+    if payload.startswith("```"):
+        payload = payload.strip("`")
+        if payload.lower().startswith("json"):
+            payload = payload[4:]
+        payload = payload.strip()
+
+    try:
+        data = json.loads(payload)
+        candidates = data["candidates"]
+        if not candidates:
+            raise ValueError("empty candidates array")
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+        logger.warning("VS parse failed (%s) — falling back to raw text", exc)
+        return raw.strip()
+
+    # Coerce probabilities; missing/invalid → 0 so they sort last.
+    for c in candidates:
+        try:
+            c["p"] = float(c.get("p", 0.0))
+        except (TypeError, ValueError):
+            c["p"] = 0.0
+
+    if strategy == "top_k_random":
+        top = sorted(candidates, key=lambda c: c["p"], reverse=True)[:3]
+        winner = random.choice(top)
+    else:  # "max_prob" and any unknown value
+        winner = max(candidates, key=lambda c: c["p"])
+
+    line = (winner.get("line") or "").strip()
+    if not line:
+        logger.warning("VS winner had empty line — falling back to raw text")
+        return raw.strip()
+
+    logger.info(
+        "VS picked candidate (strategy=%s, p=%.2f, of %d): %s",
+        strategy,
+        winner["p"],
+        len(candidates),
+        line[:120],
+    )
+    return line
 
 
 class FoxPhase(enum.Enum):
@@ -132,10 +211,7 @@ class ComedianAgent(Agent):
         self,
         instructions: str,
         *,
-        audio_url: str | None = None,
-        audio_source: str = "server",
         session_id: str | None = None,
-        proxy: str | None = None,
     ) -> None:
         super().__init__(instructions=instructions)
         # Conversation state — shared across producers.
@@ -155,11 +231,6 @@ class ComedianAgent(Agent):
         # server didn't supply one, persistence silently no-ops.
         self._session_id = session_id
 
-        # Podcast audio plumbing — only set if we have a URL to decode.
-        self._audio_url = audio_url
-        self._audio_source = audio_source
-        self._proxy = proxy
-
         # Collaborators — initialised in `on_enter` once `self.session` is
         # real. Before that, the underlying AgentSession doesn't exist yet.
         self._gate: SpeechGate | None = None
@@ -173,6 +244,45 @@ class ComedianAgent(Agent):
 
         # Background tasks owned by this agent.
         self._commentary_delay_task: asyncio.Task | None = None
+
+    # ==================================================================
+    # LLM node override — verbalized sampling (persona-neutral)
+    # ==================================================================
+    async def llm_node(
+        self,
+        chat_ctx: llm.ChatContext,
+        tools: list[llm.Tool],
+        model_settings: ModelSettings,
+    ) -> AsyncIterable[llm.ChatChunk | str]:
+        """Buffer + select when the prompt opted into verbalized sampling.
+
+        Detection is by ``SAMPLING_SENTINEL`` in the latest user message —
+        the prompt builders only emit it when ``CONFIG.sampling.num_candidates
+        > 1``. When absent, we delegate to the framework default and stream
+        normally. When present, we buffer the full JSON, pick one candidate
+        per ``CONFIG.sampling.selection``, and yield the winner as a single
+        chunk (TTS plays it as one utterance).
+
+        Persona-neutral: this code never says "joke" — it just routes a
+        line picked by the configured strategy. Each preset decides whether
+        VS is on and which selection rule to use.
+        """
+        default_node = Agent.default.llm_node(self, chat_ctx, tools, model_settings)
+
+        if CONFIG.sampling.num_candidates <= 1 or not _prompt_uses_sampling(chat_ctx):
+            async for chunk in default_node:
+                yield chunk
+            return
+
+        buf: list[str] = []
+        async for chunk in default_node:
+            text = _chunk_text(chunk)
+            if text:
+                buf.append(text)
+        raw = "".join(buf)
+
+        winner = _select_candidate(raw, CONFIG.sampling.selection)
+        yield winner
 
     # ==================================================================
     # Public state (read by collaborators and tests)
@@ -221,7 +331,7 @@ class ComedianAgent(Agent):
         self._compose_collaborators()
         self._register_listeners()
         self._log_existing_participants()
-        self._start_podcast_pipeline_if_ready()
+        self._start_podcast_pipeline()
         # Must come AFTER pipeline init — the replay may attach the
         # podcast-audio track to it immediately.
         self._replay_existing_tracks()
@@ -233,7 +343,7 @@ class ComedianAgent(Agent):
 
         # First awaits — the gate is already closed, so racing transcripts
         # are safely dropped by `_handle_podcast_transcript`.
-        await self._publish_agent_ready_if_podcast()
+        await self._publish_agent_ready()
         await self._publish_commentary_start()
 
     async def shutdown(self) -> None:
@@ -255,19 +365,10 @@ class ComedianAgent(Agent):
             on_start=self._on_user_talk_start,
             on_empty=lambda: self._set_phase(FoxPhase.LISTENING),
         )
-        if self._audio_source == "browser":
-            # Browser mode: Chrome extension captures tab audio and publishes
-            # it as a LiveKit track. No audio_url or ffmpeg needed.
-            self._podcast = PodcastPipeline(
-                audio_source="browser",
-                on_transcript=self._handle_podcast_transcript,
-            )
-        elif self._audio_url:
-            self._podcast = PodcastPipeline(
-                audio_url=self._audio_url,
-                on_transcript=self._handle_podcast_transcript,
-                proxy=self._proxy,
-            )
+        # Chrome extension captures tab audio and publishes it as a LiveKit
+        # track named ``podcast-audio``. The pipeline subscribes to that
+        # track to feed STT.
+        self._podcast = PodcastPipeline(on_transcript=self._handle_podcast_transcript)
 
     def _register_listeners(self) -> None:
         """Wire room + session events to handler methods."""
@@ -305,15 +406,10 @@ class ComedianAgent(Agent):
         except Exception:
             logger.debug("Could not enumerate remote_participants", exc_info=True)
 
-    def _start_podcast_pipeline_if_ready(self) -> None:
-        """Start the podcast STT + ffmpeg feed if we have a URL."""
-        if self._podcast is not None:
-            self._podcast.start()
-        else:
-            logger.error(
-                "!! No audio_url available — podcast STT pipeline NOT started. "
-                "Any 'play'/'pause' data packets from the client will be dropped."
-            )
+    def _start_podcast_pipeline(self) -> None:
+        """Start the STT loop; podcast audio arrives via the extension's LiveKit track."""
+        assert self._podcast is not None
+        self._podcast.start()
 
     def _replay_existing_tracks(self) -> None:
         """Replay track_subscribed for tracks that were subscribed before
@@ -394,27 +490,16 @@ class ComedianAgent(Agent):
         if self._phase == FoxPhase.INTRO:
             self._set_phase(FoxPhase.LISTENING)
 
-    async def _publish_agent_ready_if_podcast(self) -> None:
-        """Tell the client the agent is armed so it can (re-)publish play.
+    async def _publish_agent_ready(self) -> None:
+        """Signal the client that the agent has joined and is listening.
 
-        The browser's YouTube iframe starts playing before the agent is
-        dispatched, so any initial `play` it sent on RoomConnected went into
-        an empty room. This handshake asks for the current playhead.
+        The Chrome extension uses this to flip its UI mood to "Listening".
         """
-        if self._podcast is None:
-            return
         try:
             await self._publish_control({"type": "agent_ready"})
-            logger.info(
-                "Sent agent_ready to client — awaiting podcast.control play "
-                "with current YouTube playhead"
-            )
+            logger.info("Sent agent_ready to client")
         except Exception:
-            logger.warning(
-                "Failed to publish agent_ready; client will fall back to "
-                "avatar-video-subscribed sync",
-                exc_info=True,
-            )
+            logger.warning("Failed to publish agent_ready", exc_info=True)
 
     # ------------------------------------------------------------------
     # Phase transition callbacks
@@ -446,7 +531,6 @@ class ComedianAgent(Agent):
 
         Topics handled:
           - `user.control` — hold-to-talk start/end
-          - `podcast.control` — play / pause for the server-side decoder
         """
         msg = self._parse_data_packet(data_packet)
         if msg is None:
@@ -456,8 +540,6 @@ class ComedianAgent(Agent):
         handlers = {
             "user_talk_start": lambda: self._user_turn and self._user_turn.start(),
             "user_talk_end": lambda: self._user_turn and self._user_turn.end(),
-            "play": lambda: self._dispatch_play(msg),
-            "pause": lambda: self._dispatch_pause(),
         }
         handler = handlers.get(msg_type)
         if handler is not None:
@@ -490,21 +572,6 @@ class ComedianAgent(Agent):
             msg.get("type"),
         )
         return msg
-
-    def _dispatch_play(self, msg: dict) -> None:
-        if self._podcast is None:
-            logger.warning(
-                "Received 'play' but podcast pipeline not initialised (audio_url missing?)"
-            )
-            return
-        t = float(msg.get("t") or 0.0)
-        _fire_and_forget(self._podcast.play(t), name="podcast.play")
-
-    def _dispatch_pause(self) -> None:
-        if self._podcast is None:
-            logger.warning("Received 'pause' but podcast pipeline not initialised")
-            return
-        _fire_and_forget(self._podcast.pause(), name="podcast.pause")
 
     # ==================================================================
     # Podcast transcript → commentary
@@ -660,7 +727,7 @@ class ComedianAgent(Agent):
         `self` so `_on_conversation_item_added` can log it with the turn.
         """
         angle = pick_angle(self._recent_angles)
-        self._pending_angle_name = angle["name"]
+        self._pending_angle_name = angle
         prompt = build_commentary_request(
             recent_transcript=self._full_transcript.recent_transcript(),
             commentary_history=self._commentary_history,
@@ -668,7 +735,7 @@ class ComedianAgent(Agent):
             energy_level=energy_level,
             angle=angle,
         )
-        return prompt, angle["name"]
+        return prompt, angle
 
     # ==================================================================
     # User push-to-talk → reply
@@ -701,14 +768,14 @@ class ComedianAgent(Agent):
     def _build_user_reply_prompt(self, user_text: str) -> tuple[str, str]:
         """Assemble the per-turn user-reply prompt."""
         angle = pick_angle(self._recent_angles)
-        self._pending_angle_name = angle["name"]
+        self._pending_angle_name = angle
         prompt = build_user_reply_request(
             user_text=user_text,
             recent_transcript=self._full_transcript.recent_transcript(),
             commentary_history=self._commentary_history,
             angle=angle,
         )
-        return prompt, angle["name"]
+        return prompt, angle
 
     async def on_user_turn_completed(self, turn_ctx, *, new_message) -> None:
         """Fallback capture for hold-to-talk transcripts.
@@ -860,16 +927,12 @@ class ComedianAgent(Agent):
             getattr(participant, "identity", "?"),
         )
 
-        # Browser audio mode: the Chrome extension publishes a track named
-        # "podcast-audio" containing the captured tab audio. Attach it to
-        # the podcast pipeline so STT receives the audio directly.
-        if (
-            track_name == "podcast-audio"
-            and self._podcast is not None
-            and self._podcast.is_browser_mode
-        ):
-            self._podcast.attach_browser_track(track)
-            logger.info("Attached browser podcast-audio track to STT pipeline")
+        # The Chrome extension publishes a track named "podcast-audio"
+        # containing the captured tab audio. Attach it to the podcast
+        # pipeline so STT receives the audio directly.
+        if track_name == "podcast-audio" and self._podcast is not None:
+            self._podcast.attach_track(track)
+            logger.info("Attached podcast-audio track to STT pipeline")
 
     def _log_track_published(self, publication: Any, participant: Any) -> None:
         logger.info(

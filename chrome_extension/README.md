@@ -2,7 +2,7 @@
 
 Chrome extension that adds an AI comedian avatar (Fox) as a side panel companion while you watch YouTube. Fox listens to the video's audio, reacts in real time, and delivers comedic commentary.
 
-Unlike the Next.js web app, the extension captures tab audio directly via `chrome.tabCapture`, eliminating the server-side yt-dlp + ffmpeg + proxy pipeline entirely.
+The extension captures tab audio directly via `chrome.tabCapture` and publishes it to LiveKit, so the agent never needs to extract or decode YouTube audio server-side.
 
 ## Prerequisites
 
@@ -69,13 +69,7 @@ AVATAR_URL=http://localhost:8080/static/fox_2x3.jpg
 
 # Optional — leave blank to run without persistence
 DATABASE_URL=
-
-# Not needed for the Chrome extension path (only for the web app):
-# YOUTUBE_PROXY=
-# YOUTUBE_COOKIES=
 ```
-
-> **Note:** `YOUTUBE_PROXY` and `YOUTUBE_COOKIES` are not needed when using the Chrome extension. Those only apply to the web app path where the agent extracts audio via yt-dlp.
 
 > **Note:** `AVATAR_URL` must be reachable from LemonSlice Cloud's servers. `localhost` won't work. Either use a deployed URL or expose your local server with ngrok (`ngrok http 8080`).
 
@@ -148,46 +142,35 @@ YouTube tab audio ──→ chrome.tabCapture ──→ LiveKit room ──→ A
 1. **Content script** (`content.js`) injects into YouTube pages and monitors the `<video>` element for play/pause/seek events
 2. **Side panel** (`sidepanel.html`) connects to LiveKit and captures the tab's audio via `chrome.tabCapture`
 3. Tab audio is published to the LiveKit room as a track named `podcast-audio`
-4. The **agent** subscribes to this track and feeds it to Groq Whisper STT (no ffmpeg needed)
+4. The **agent** subscribes to this track and feeds it to Groq Whisper STT
 5. STT transcripts trigger the comedy pipeline: Groq LLM generates a line → ElevenLabs TTS voices it → LemonSlice renders the avatar
 6. The avatar video + audio stream back through LiveKit to the side panel
 
-### Extension vs. web app
-
-| | Web app (Next.js) | Chrome extension |
-|---|---|---|
-| Audio source | Agent runs yt-dlp → ffmpeg | Extension captures tab audio |
-| Session creation | `source: null` | `source: "extension"` |
-| Agent behavior | yt-dlp + ffmpeg + proxy | Subscribes to `podcast-audio` track |
-| IP pinning / proxy | Required | Not needed |
-| CORS audio proxy | Required | Not needed |
-
 ## Testing
 
-### Verify the API accepts extension sessions
+### Verify the API accepts session creation
 
 ```bash
 curl -X POST http://localhost:8080/api/sessions \
   -H "Content-Type: application/json" \
-  -d '{"video_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "source": "extension"}'
+  -d '{"video_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}'
 ```
 
 You should get back a JSON response with `session_id`, `token`, `livekit_url`, etc.
 
-### Verify the agent starts in browser audio mode
+### Verify the agent picks up the audio track
 
 After starting a session from the extension, check the agent terminal for:
 
 ```
-Browser audio mode — skipping yt-dlp extraction.
-Podcast pipeline initialised in BROWSER mode (awaiting podcast-audio track from extension)
+Podcast pipeline initialised (awaiting podcast-audio track from extension)
 ```
 
 Once the extension publishes the tab audio track:
 
 ```
-Attached browser podcast-audio track to STT pipeline
-First browser audio frame pushed to STT buffer
+Attached podcast-audio track to STT pipeline
+First podcast audio frame pushed to STT buffer
 ```
 
 ### Verify end-to-end
@@ -200,7 +183,7 @@ First browser audio frame pushed to STT buffer
 6. Confirm:
    - Side panel shows "Live" status (green dot)
    - Fox status bar shows "Listening" with headphone emoji
-   - Agent logs show `Podcast pipeline initialised in BROWSER mode`
+   - Agent logs show `Podcast pipeline initialised (awaiting podcast-audio track from extension)`
    - After 10-20 seconds, Fox should deliver the first commentary
    - Speech bubbles appear in the side panel over the avatar
    - Fox's voice plays through the side panel
@@ -212,9 +195,8 @@ First browser audio frame pushed to STT buffer
 | "Session creation failed" | API server not running | Start the API: `uv run uvicorn ...` |
 | Side panel shows "Connecting" forever | LiveKit credentials wrong or agent not running | Check `LIVEKIT_URL`/`KEY`/`SECRET` in `.env`, start the agent |
 | Fox avatar doesn't appear | `AVATAR_URL` not reachable from LemonSlice | Use a public URL or ngrok tunnel |
-| No commentary after 30s | Tab audio not reaching agent | Check agent logs for "browser audio frame" messages |
+| No commentary after 30s | Tab audio not reaching agent | Check agent logs for "podcast audio frame" messages |
 | "Failed to capture tab audio" | Chrome permission issue | Make sure the YouTube tab is the active tab when clicking start |
-| Agent logs show "server" mode | Session created without `source: "extension"` | Make sure you're using the extension, not the web app |
 
 ## File structure
 

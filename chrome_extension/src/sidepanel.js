@@ -7,8 +7,6 @@
  * Audio flow:
  *   YouTube tab audio → chrome.tabCapture → MediaStream → LiveKit track
  *   → Agent subscribes → Groq STT → Commentary generation
- *
- * This eliminates the need for the server-side yt-dlp + ffmpeg + proxy pipeline.
  */
 
 import {
@@ -48,10 +46,7 @@ let activeTabId = null;
 let tabAudioStream = null;
 let tabAudioContext = null;
 let tabAudioGain = null;
-let isTalking = false;
 let ducking = false;
-let videoVolume = 80;
-let commentaryVolume = 100;
 let captions = [];
 
 // ── Init ──
@@ -80,9 +75,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Wire up controls
   $("#start-btn").addEventListener("click", startSession);
-  $("#video-volume").addEventListener("input", onVideoVolumeChange);
-  $("#fox-volume").addEventListener("input", onFoxVolumeChange);
-  wireHoldToTalk();
   $("#end-btn").addEventListener("click", endSession);
 
   // Listen for content script messages relayed through background
@@ -230,6 +222,11 @@ async function endSession() {
     room = null;
   }
   teardownTabAudio();
+  if (unduckTimer) {
+    clearTimeout(unduckTimer);
+    unduckTimer = null;
+  }
+  ducking = false;
   captions = [];
   renderCaptions();
 
@@ -253,7 +250,6 @@ async function createSessionApi(apiUrl, videoUrl, videoTitle) {
     body: JSON.stringify({
       video_url: videoUrl,
       video_title: videoTitle,
-      source: "extension",
     }),
   });
   if (!res.ok) {
@@ -322,10 +318,8 @@ async function captureAndPublishTabAudio() {
   // loopback the YouTube video would appear to mute the moment we start
   // capturing. Piping through an AudioContext to `destination` plays the
   // same audio the agent receives back out through the local speakers.
-  // The gain node is the single source of truth for the "Video" volume
-  // slider — the tab's own <video>.volume no longer affects what the user
-  // hears (Chrome's already diverted that output into our capture stream),
-  // so this gain is what actually controls loudness.
+  // The gain node is used solely for ducking while Fox is talking; at rest
+  // it stays at 1.0 so the user's own YouTube / system volume is preserved.
   tabAudioContext = new AudioContext();
   // Side panels are usually activated by a user gesture, but some Chromium
   // builds still create the context in "suspended" state. Explicit resume
@@ -335,7 +329,6 @@ async function captureAndPublishTabAudio() {
   }
   const source = tabAudioContext.createMediaStreamSource(tabAudioStream);
   tabAudioGain = tabAudioContext.createGain();
-  tabAudioGain.gain.value = videoVolume / 100;
   source.connect(tabAudioGain);
   tabAudioGain.connect(tabAudioContext.destination);
 
@@ -392,7 +385,6 @@ function onTrackSubscribed(track, publication, participant) {
   if (!isAvatar && track.kind === Track.Kind.Audio) {
     // Fox's voice — attach to a hidden audio element
     const el = track.attach();
-    el.volume = commentaryVolume / 100;
     $("#audio-container").appendChild(el);
     return;
   }
@@ -417,7 +409,6 @@ function onTrackSubscribed(track, publication, participant) {
 
   if (track.kind === Track.Kind.Audio) {
     const el = track.attach();
-    el.volume = commentaryVolume / 100;
     $("#audio-container").appendChild(el);
   }
 }
@@ -442,17 +433,21 @@ function onDataReceived(payload, participant, kind, topic) {
     return;
   }
 
-  // Commentary lifecycle — update mood and avatar frame
+  // Commentary lifecycle — authoritative source for ducking. These bracket
+  // a whole utterance, so they don't flicker the way VAD active-speaker
+  // events do between words.
   if (topic === "commentary.control" && msg.type === "commentary_start") {
     setFoxMood("Cooking");
     $("#avatar-container").classList.add("speaking");
     spawnReaction("random");
+    setDucking(true);
     return;
   }
 
   if (topic === "commentary.control" && msg.type === "commentary_end") {
     setFoxMood("Listening");
     $("#avatar-container").classList.remove("speaking");
+    setDucking(false);
     return;
   }
 
@@ -463,22 +458,18 @@ function onDataReceived(payload, participant, kind, topic) {
   }
 }
 
+// VAD-driven active-speaker updates only drive the avatar "speaking" CSS
+// class — purely visual, so it's fine if it flickers. Ducking is handled
+// by commentary_start/commentary_end data messages (see onDataReceived).
 function onActiveSpeakers(speakers) {
   const localId = room?.localParticipant?.identity;
   const remoteSpeaking = speakers.some((p) => p.identity !== localId);
 
-  if (remoteSpeaking && !ducking) {
-    // Fox just started speaking
+  if (remoteSpeaking) {
     $("#avatar-container").classList.add("speaking");
-    setFoxMood("Talking");
-  } else if (!remoteSpeaking && ducking) {
-    // Fox stopped speaking
+  } else {
     $("#avatar-container").classList.remove("speaking");
-    setFoxMood("Listening");
   }
-
-  ducking = remoteSpeaking;
-  applyVolumes();
 }
 
 function onConnectionState(state) {
@@ -546,123 +537,59 @@ async function publishControl(payload, topic) {
   }
 }
 
-// ── Volume Controls ──
-function onVideoVolumeChange(e) {
-  videoVolume = Number(e.target.value);
-  applyVolumes();
-}
+// ── Ducking ──
+// When Fox speaks, drop the video to a low but still-audible level rather
+// than muting. Around -12 dB (25%) is the standard range for dialog ducking;
+// going much lower makes the transitions feel dramatic and pump-y. At rest
+// the gain is 1.0 — we never modify the user's own YouTube/system volume.
+const DUCK_GAIN = 0.25;
+const PASSTHROUGH_GAIN = 1.0;
 
-function onFoxVolumeChange(e) {
-  commentaryVolume = Number(e.target.value);
-  applyVolumes();
-}
+// Release hold on un-duck. Prevents brief gaps (late commentary_end, dropped
+// packets) from punching the video back up mid-utterance. 600ms is the
+// conventional sweet spot for speech ducking.
+const UNDUCK_RELEASE_MS = 600;
 
-// When Fox speaks (ducking) or the user is holding-to-talk, drop the video
-// to a low but still-audible level rather than muting. This keeps ambient
-// awareness of what's on screen without stepping on Fox's delivery or the
-// user's mic (the user's own voice dominates anyway at these levels).
-const DUCK_VIDEO_VOLUME = 10;
+// Exponential-ramp time constants for the gain node (seconds). Fast attack
+// so Fox isn't stepped on, slower release so the recovery is inaudible.
+// setTargetAtTime uses these as the 63%-of-target time constant.
+const DUCK_ATTACK_TAU = 0.05;
+const DUCK_RELEASE_TAU = 0.25;
 
-function applyVolumes() {
-  // Effective volumes with ducking and talk state
-  const effectiveVideo = isTalking || ducking ? DUCK_VIDEO_VOLUME : videoVolume;
-  const effectiveFox = isTalking ? 0 : commentaryVolume;
+let unduckTimer = null;
 
-  // The tab's real audio output is captured by chrome.tabCapture, so the
-  // only audio the user actually hears from the video is our AudioContext
-  // loopback. Drive its gain node from the slider. (We also ping the
-  // content script to set the <video> element's .volume — redundant but
-  // harmless, and it keeps YouTube's own UI in sync.)
-  if (tabAudioGain) {
-    tabAudioGain.gain.value = effectiveVideo / 100;
-  }
-  if (activeTabId) {
-    chrome.tabs.sendMessage(activeTabId, {
-      type: "set-volume",
-      volume: effectiveVideo,
-    }).catch(() => {});
-  }
-
-  // Set Fox's audio volume on attached audio elements
-  const foxVol = effectiveFox / 100;
-  if (room) {
-    room.remoteParticipants.forEach((p) => {
-      p.audioTrackPublications.forEach((pub) => {
-        if (pub.track) {
-          pub.track.attachedElements.forEach((el) => {
-            el.volume = foxVol;
-          });
-        }
-      });
-    });
-  }
-}
-
-// ── Hold to Talk ──
-function wireHoldToTalk() {
-  const btn = $("#talk-btn");
-
-  btn.addEventListener("pointerdown", (e) => {
-    e.currentTarget.setPointerCapture(e.pointerId);
-    startTalk();
-  });
-
-  btn.addEventListener("pointerup", (e) => {
-    try {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch {}
-    endTalk();
-  });
-
-  btn.addEventListener("pointercancel", (e) => {
-    try {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch {}
-    endTalk();
-  });
-
-  btn.addEventListener("contextmenu", (e) => e.preventDefault());
-}
-
-async function startTalk() {
-  if (isTalking) return;
-  isTalking = true;
-  $("#talk-btn").classList.add("active");
-  $("#talk-label").textContent = "Listening...";
-  setFoxMood("Hearing you");
-  applyVolumes();
-
-  await publishControl({ type: "user_talk_start" }, "user.control");
-
-  try {
-    await room.localParticipant.setMicrophoneEnabled(true);
-  } catch (err) {
-    console.error("[ext] Failed to enable mic:", err);
-    isTalking = false;
-    $("#talk-btn").classList.remove("active");
-    $("#talk-label").textContent = "Hold to talk";
-    setFoxMood("Listening");
-    applyVolumes();
-    await publishControl({ type: "user_talk_end" }, "user.control");
-  }
-}
-
-async function endTalk() {
-  if (!isTalking) return;
-  isTalking = false;
-  $("#talk-btn").classList.remove("active");
-  $("#talk-label").textContent = "Hold to talk";
-  setFoxMood("Thinking...");
-  applyVolumes();
-
-  await publishControl({ type: "user_talk_end" }, "user.control");
-
-  // Delay mic disable (same as web app — let VAD see trailing silence)
-  setTimeout(() => {
-    if (!isTalking && room) {
-      room.localParticipant.setMicrophoneEnabled(false).catch(() => {});
+// Single entry point for toggling the ducking state. On un-duck we hold for
+// UNDUCK_RELEASE_MS before actually releasing, to ride over any short gaps.
+function setDucking(active) {
+  if (active) {
+    if (unduckTimer) {
+      clearTimeout(unduckTimer);
+      unduckTimer = null;
     }
-  }, 1200);
+    if (!ducking) {
+      ducking = true;
+      applyDucking();
+    }
+    return;
+  }
+  if (unduckTimer) return;
+  unduckTimer = setTimeout(() => {
+    unduckTimer = null;
+    ducking = false;
+    applyDucking();
+  }, UNDUCK_RELEASE_MS);
+}
+
+function applyDucking() {
+  if (!tabAudioGain || !tabAudioContext) return;
+  // Ramp the gain exponentially instead of snapping — an instantaneous
+  // .value = x is audible as a click/pump; setTargetAtTime fades smoothly
+  // with no zipper noise.
+  const now = tabAudioContext.currentTime;
+  const target = ducking ? DUCK_GAIN : PASSTHROUGH_GAIN;
+  const tau = ducking ? DUCK_ATTACK_TAU : DUCK_RELEASE_TAU;
+  tabAudioGain.gain.cancelScheduledValues(now);
+  tabAudioGain.gain.setTargetAtTime(target, now, tau);
 }
 
 // ── Captions (Speech Bubbles) ──
@@ -726,7 +653,6 @@ const MOOD_ICONS = {
   "Cooking":         "\u{1F525}",
   "Talking":         "\u{1F4AC}",
   "Thinking...":     "\u{1F4AD}",
-  "Hearing you":     "\u{1F442}",
   "Reconnecting...": "\u{1F504}",
   "Disconnected":    "\u{1F634}",
 };

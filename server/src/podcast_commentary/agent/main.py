@@ -6,7 +6,6 @@ This module is intentionally thin: all conversation behaviour lives in
 
   * build the `AgentSession` (STT / LLM / TTS / VAD / turn detection)
   * start the LemonSlice avatar (if one was requested)
-  * extract the podcast audio URL via yt-dlp
   * construct the `ComedianAgent` and start the session
   * register a shutdown hook that tears the podcast pipeline down
 
@@ -19,8 +18,6 @@ import asyncio
 import json
 import logging
 import time
-import uuid
-from urllib.parse import urlparse, urlunparse
 
 from dotenv import load_dotenv
 from livekit.agents import (
@@ -38,7 +35,6 @@ from podcast_commentary.agent.comedian import ComedianAgent
 from podcast_commentary.agent.fox_config import CONFIG
 from podcast_commentary.agent.prompts import COMEDIAN_SYSTEM_PROMPT
 from podcast_commentary.core.config import settings
-from podcast_commentary.core.youtube import extract_audio_url, is_youtube_url
 
 logger = logging.getLogger("podcast-commentary.agent")
 
@@ -57,41 +53,6 @@ def prewarm(proc: JobProcess) -> None:
 
 
 server.setup_fnc = prewarm
-
-
-def _make_sticky_proxy() -> str | None:
-    """Pin the rotating residential proxy to one exit IP for this job.
-
-    IPRoyal rotates exit IPs per TCP connection. YouTube signed URLs embed
-    ``ip=…`` of the requester, so yt-dlp and ffmpeg **must** egress from
-    the same IP. Appending ``_session-…_lifetime-30m`` to the **password**
-    (IPRoyal's convention) pins the exit IP for 30 minutes — long enough
-    for any single podcast session.
-
-    Each job gets a unique session ID so concurrent sessions don't share
-    (and therefore contend over) the same proxy IP.
-    """
-    proxy = settings.YOUTUBE_PROXY
-    if not proxy:
-        return None
-    parsed = urlparse(proxy)
-    if not parsed.password or not parsed.hostname:
-        return proxy
-    # Only inject session params for known rotating-residential providers.
-    if "iproyal.com" not in parsed.hostname:
-        return proxy
-    session_id = uuid.uuid4().hex[:8]
-    new_password = f"{parsed.password}_session-{session_id}_lifetime-30m"
-    netloc = f"{parsed.username}:{new_password}@{parsed.hostname}"
-    if parsed.port:
-        netloc += f":{parsed.port}"
-    sticky = urlunparse(parsed._replace(netloc=netloc))
-    logger.info(
-        "Sticky proxy session created (session=%s, provider=%s)",
-        session_id,
-        parsed.hostname,
-    )
-    return sticky
 
 
 def _parse_job_metadata(ctx: JobContext) -> dict:
@@ -188,52 +149,6 @@ async def _wait_for_avatar_participant(
         return False
 
 
-async def _extract_audio_url(
-    video_url: str | None,
-    proxy: str | None = None,
-) -> str | None:
-    """Resolve a direct-CDN audio URL using yt-dlp.
-
-    IMPORTANT: this MUST run in the same process (same IP) that will later
-    fetch the URL with ffmpeg. YouTube's signed URLs embed `ip=…` of the
-    requesting host; if the API server extracts and the agent fetches, the
-    CDN returns 403. Keeping extraction in the agent process makes the
-    signatures match.
-
-    When a sticky *proxy* is supplied, yt-dlp routes through it so the
-    signed URL's ``ip=`` matches what ffmpeg will use later.
-    """
-    if not video_url:
-        logger.warning(
-            "!! No video_url in job metadata — agent will have no podcast "
-            "audio. Check that the API server is setting metadata.video_url "
-            "on dispatch."
-        )
-        return None
-    if not is_youtube_url(video_url):
-        logger.warning(
-            "!! video_url %r is not a recognised YouTube URL — agent cannot extract audio",
-            video_url,
-        )
-        return None
-    logger.info("Extracting audio URL (in agent process) for %s", video_url)
-    t0 = time.perf_counter()
-    url = await extract_audio_url(video_url, proxy=proxy)
-    elapsed = time.perf_counter() - t0
-    if url:
-        logger.info("yt-dlp extraction succeeded in %.2fs", elapsed)
-    else:
-        logger.error(
-            "!! yt-dlp extraction FAILED in %.2fs for %s — podcast audio "
-            "pipeline will NOT start. Fox will hear nothing. See earlier "
-            "yt-dlp logs for the underlying reason (403 / client block / "
-            "signature).",
-            elapsed,
-            video_url,
-        )
-    return url
-
-
 @server.rtc_session(agent_name=settings.AGENT_NAME)
 async def entrypoint(ctx: JobContext) -> None:
     """Per-job entrypoint — called by the LiveKit agent worker."""
@@ -244,38 +159,8 @@ async def entrypoint(ctx: JobContext) -> None:
     # local participant before connecting").
     await ctx.connect()
 
-    audio_source = metadata.get("audio_source", "server")
-
-    # In browser mode (Chrome extension), the extension captures tab audio
-    # and publishes it as a LiveKit track. No yt-dlp or ffmpeg needed.
-    audio_url = None
-    sticky_proxy = None
-
-    if audio_source == "browser":
-        logger.info(
-            "Browser audio mode — skipping yt-dlp extraction. "
-            "Podcast audio will arrive via LiveKit track from the extension."
-        )
-    else:
-        # Pin the residential proxy to a single exit IP for this job so yt-dlp
-        # and ffmpeg share the same IP (YouTube signed URLs are IP-locked).
-        sticky_proxy = _make_sticky_proxy()
-
-        # Extract audio URL concurrently with avatar setup so we don't add
-        # yt-dlp latency to session start.
-        audio_url_task = asyncio.create_task(
-            _extract_audio_url(metadata.get("video_url"), proxy=sticky_proxy)
-        )
-
     session = _build_session(vad=ctx.proc.userdata["vad"])
     avatar_session_id = await _start_avatar(metadata, session, ctx)
-
-    if audio_source != "browser":
-        try:
-            audio_url = await audio_url_task
-        except Exception:
-            logger.exception("yt-dlp extraction task failed")
-            audio_url = None
 
     logger.info(
         "=== FOX SYSTEM PROMPT ===\n%s\n=== END SYSTEM PROMPT ===",
@@ -284,15 +169,10 @@ async def entrypoint(ctx: JobContext) -> None:
 
     agent = ComedianAgent(
         instructions=COMEDIAN_SYSTEM_PROMPT,
-        audio_url=audio_url,
-        audio_source=audio_source,
         # Supplied by the API server when the session row is created. Used
         # to thread every turn (podcast / user / agent) + the rolling
         # summary into the conversation_messages table.
         session_id=metadata.get("session_id"),
-        # Sticky proxy — same exit IP for both yt-dlp extraction and ffmpeg
-        # streaming so the YouTube CDN honours the signed URL.
-        proxy=sticky_proxy,
     )
 
     await session.start(

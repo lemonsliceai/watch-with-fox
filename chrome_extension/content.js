@@ -143,13 +143,6 @@
       }
       return false;
     }
-
-    if (msg.type === "set-volume") {
-      if (video) {
-        video.volume = Math.max(0, Math.min(1, msg.volume / 100));
-      }
-      return false;
-    }
   });
 
   // Run on load
