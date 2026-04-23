@@ -2,9 +2,12 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    LIVEKIT_URL: str = "ws://localhost:7880"
-    LIVEKIT_API_KEY: str = "devkey"
-    LIVEKIT_API_SECRET: str = "secret"
+    # LiveKit — required. No defaults: if these are missing the server
+    # should fail to boot rather than silently fall back to dev credentials
+    # in production.
+    LIVEKIT_URL: str | None = None
+    LIVEKIT_API_KEY: str | None = None
+    LIVEKIT_API_SECRET: str | None = None
 
     DATABASE_URL: str | None = None
 
