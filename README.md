@@ -1,11 +1,11 @@
-# Watch with Fox: Never watch YouTube alone again
+# Watch with Fox & Alien: Never watch YouTube alone again
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A Chrome extension and Python backend where users watch YouTube alongside **Fox**, an AI comedian avatar that delivers real-time comedic commentary. Think MST3K meets AI: Fox listens to the video's audio, understands what's being discussed, and drops witty one-liners and observations via an animated talking fox avatar.
+A Chrome extension and Python backend where users watch YouTube alongside **Fox & Alien**, AI comedian avatars that deliver real-time comedic commentary. Think MST3K meets AI: Fox & Alien listen to the video's audio, understand what's being discussed, and drop witty one-liners and observations via animated talking avatars.
 
 <p align="center">
-  <img src="docs/screenshot.png" alt="Watch with Fox — Fox reacting to a YouTube video" width="720" />
+  <img src="docs/screenshot.png" alt="Watch with Fox & Alien — Fox and Alien reacting to a YouTube video" width="720" />
 </p>
 
 ## Architecture
