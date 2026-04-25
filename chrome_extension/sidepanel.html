@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Couchverse</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -67,9 +69,6 @@
         </div>
       </div>
 
-      <!-- Audio renderer — hidden elements for the comedians' voices -->
-      <div id="audio-container" class="hidden"></div>
-
       <!-- Controls — Game HUD Panel.
            Pacing dials live in a collapsed disclosure so they don't eat
            vertical space the avatars want. Set-and-forget settings —
@@ -115,6 +114,12 @@
         </div>
       </div>
     </div>
+
+    <!-- Hidden audio-element sink. Each persona's remote audio track is
+         attached here (volume=0) purely to keep Chrome's WebRTC pipeline
+         pulling RTP samples — the audible path is the WebAudio graph
+         built from the same MediaStreamTrack in sidepanel.js. -->
+    <div id="audio-container" class="hidden"></div>
   </div>
 
   <script src="dist/sidepanel.js"></script>

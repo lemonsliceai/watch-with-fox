@@ -11,8 +11,7 @@ The shared concerns — the podcast STT pipeline, the rolling transcript,
 the commentary timer (MIN_GAP / burst), speaker selection, intro
 sequencing, and the ``commentary.control`` data channel — all live in
 the ``Director`` (see ``director.py``). The Director invokes
-``deliver_commentary()`` / ``deliver_user_reply()`` on whichever
-PersonaAgent it picks each turn.
+``deliver_commentary()`` on whichever PersonaAgent it picks each turn.
 
 This module used to be ~1000 lines of orchestration; the orchestration
 moved to the Director and what's left is a thin wrapper around one
@@ -35,7 +34,6 @@ from podcast_commentary.agent.fox_config import FoxConfig
 from podcast_commentary.agent.prompts import (
     SAMPLING_SENTINEL,
     build_commentary_request,
-    build_user_reply_request,
 )
 from podcast_commentary.agent.speech_gate import SpeechGate
 from podcast_commentary.core.db import log_conversation_message
@@ -204,23 +202,18 @@ class FoxPhase(enum.Enum):
     """Per-persona lifecycle phases.
 
     Each PersonaAgent runs its own state machine. The Director coordinates
-    *across* personas (e.g. user push-to-talk interrupts whoever's speaking)
-    but never reaches inside a persona's phase.
+    *across* personas but never reaches inside a persona's phase.
     """
 
     INTRO = "intro"
     LISTENING = "listening"
     COMMENTATING = "commentating"
-    USER_TALKING = "user_talking"
-    REPLYING = "replying"
 
 
 _VALID_TRANSITIONS: dict[FoxPhase, set[FoxPhase]] = {
-    FoxPhase.INTRO: {FoxPhase.LISTENING, FoxPhase.USER_TALKING},
-    FoxPhase.LISTENING: {FoxPhase.COMMENTATING, FoxPhase.USER_TALKING, FoxPhase.INTRO},
-    FoxPhase.COMMENTATING: {FoxPhase.LISTENING, FoxPhase.USER_TALKING},
-    FoxPhase.USER_TALKING: {FoxPhase.REPLYING, FoxPhase.LISTENING},
-    FoxPhase.REPLYING: {FoxPhase.LISTENING, FoxPhase.USER_TALKING},
+    FoxPhase.INTRO: {FoxPhase.LISTENING},
+    FoxPhase.LISTENING: {FoxPhase.COMMENTATING, FoxPhase.INTRO},
+    FoxPhase.COMMENTATING: {FoxPhase.LISTENING},
 }
 
 
@@ -388,32 +381,6 @@ class PersonaAgent(Agent):
         self._set_phase(FoxPhase.COMMENTATING)
         return self.gate.speak(prompt=prompt)
 
-    async def deliver_user_reply(
-        self,
-        user_text: str,
-        *,
-        recent_transcript: str,
-        co_speaker_history: list[str] | None = None,
-        co_speaker_label: str | None = None,
-    ) -> Any:
-        """Reply to a push-to-talk turn. Returns the SpeechHandle."""
-        from podcast_commentary.agent.angles import pick_angle
-
-        angle = pick_angle(self._recent_angles, config=self._config)
-        self._pending_angle_name = angle
-        prompt = build_user_reply_request(
-            config=self._config,
-            user_text=user_text,
-            recent_transcript=recent_transcript,
-            commentary_history=self._commentary_history,
-            angle=angle,
-            co_speaker_history=co_speaker_history,
-            co_speaker_label=co_speaker_label,
-            length_hint=self._length_hint,
-        )
-        self._set_phase(FoxPhase.REPLYING)
-        return self.gate.speak(prompt=prompt)
-
     def interrupt(self) -> None:
         """Cut off the current turn if any. Safe to call from any thread."""
         if self._gate is not None:
@@ -435,7 +402,7 @@ class PersonaAgent(Agent):
         it off mid-sentence. ``force_listening`` is the last-resort escape
         hatch when a handle is truly stuck and audio isn't flowing.
         """
-        if self._phase in (FoxPhase.INTRO, FoxPhase.COMMENTATING, FoxPhase.REPLYING):
+        if self._phase in (FoxPhase.INTRO, FoxPhase.COMMENTATING):
             self._set_phase(FoxPhase.LISTENING)
         if self._gate is not None:
             self._gate.interrupt()
@@ -490,10 +457,6 @@ class PersonaAgent(Agent):
         """Store the UI's reply-length preference for the next turn."""
         self._length_hint = level
 
-    def mark_user_talking(self) -> None:
-        """Director signals: user push-to-talk has started. Move into USER_TALKING."""
-        self._set_phase(FoxPhase.USER_TALKING)
-
     # ==================================================================
     # Phase transitions
     # ==================================================================
@@ -516,7 +479,7 @@ class PersonaAgent(Agent):
 
     def _on_speech_released(self) -> None:
         """SpeechGate fires this when the current handle resolves."""
-        if self._phase in (FoxPhase.INTRO, FoxPhase.COMMENTATING, FoxPhase.REPLYING):
+        if self._phase in (FoxPhase.INTRO, FoxPhase.COMMENTATING):
             self._set_phase(FoxPhase.LISTENING)
 
     # ==================================================================
@@ -544,10 +507,10 @@ class PersonaAgent(Agent):
             # `_on_persona_speech_end` checks `_room_is_listening()` to
             # decide whether to re-arm the silence loop — and that check
             # demands every persona be in LISTENING. Calling the callback
-            # first leaves us in COMMENTATING/REPLYING/INTRO, the gate
-            # fails, and the silence loop never re-arms (compounding the
-            # bug where the loop dies on early-return).
-            if self._phase in (FoxPhase.INTRO, FoxPhase.COMMENTATING, FoxPhase.REPLYING):
+            # first leaves us in COMMENTATING/INTRO, the gate fails, and
+            # the silence loop never re-arms (compounding the bug where
+            # the loop dies on early-return).
+            if self._phase in (FoxPhase.INTRO, FoxPhase.COMMENTATING):
                 self._on_speech_released()
             if self._on_speech_end_cb is not None:
                 try:

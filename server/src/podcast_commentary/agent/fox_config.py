@@ -1,14 +1,14 @@
 """FoxConfig — every knob that shapes Fox's behaviour, in one place.
 
 Presets live in ``fox_configs/<name>.py`` and each export a top-level
-``CONFIG: FoxConfig``. The active preset is selected by the ``FOX_CONFIG``
-env var (defaults to ``"fox"``); switch presets by editing that var in
-``server/.env`` and restarting the agent.
+``CONFIG: FoxConfig``. The active presets are selected by the ``PERSONAS``
+env var (comma-separated list, defaults to ``"fox,chaos_agent"``); switch
+by editing that var in ``server/.env`` and restarting the agent.
 
 To add a new preset:
   1. Copy ``fox_configs/fox.py`` to ``fox_configs/<my_preset>.py``.
   2. Edit any field you want to tune.
-  3. Set ``FOX_CONFIG=<my_preset>`` in ``server/.env``.
+  3. Add ``<my_preset>`` to ``PERSONAS`` in ``server/.env``.
   4. Restart the agent.
 
 Every module that configures Fox's behaviour reads from the module-level
@@ -48,7 +48,6 @@ class PersonaConfig:
     comedic_angles: tuple[str, ...]
     angle_lookback: int
     commentary_cta: str
-    user_reply_cta: str
     # Display name shown to the audience and used by the Director's
     # speaker-selection LLM (e.g. "Fox", "Alien"). Falls back to the
     # config's ``name`` field when empty.
@@ -66,7 +65,6 @@ class TimingConfig:
     sentences_before_joke: int
     silence_fallback_s: float
     post_speech_safety_s: float
-    user_turn_grace_s: float
     transcript_chunk_s: float
 
 
@@ -204,18 +202,14 @@ def load_config(name: str) -> FoxConfig:
 
 
 def _resolve_persona_names() -> list[str]:
-    """Return the persona names to load, in order.
-
-    ``PERSONAS`` (comma-separated) wins. Falls back to the legacy single
-    ``FOX_CONFIG`` value so older deployments keep working unchanged.
-    """
-    raw = (settings.PERSONAS or settings.FOX_CONFIG or "fox").strip()
+    """Return the persona names to load, in order, from ``PERSONAS``."""
+    raw = (settings.PERSONAS or "fox").strip()
     names = [n.strip() for n in raw.split(",") if n.strip()]
     return names or ["fox"]
 
 
 def load_active_configs() -> list[FoxConfig]:
-    """Load every persona named in ``PERSONAS`` (or ``FOX_CONFIG``)."""
+    """Load every persona named in ``PERSONAS``."""
     return [load_config(n) for n in _resolve_persona_names()]
 
 

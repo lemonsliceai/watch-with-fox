@@ -9,13 +9,8 @@ orchestration). Here we only:
     turn detection from the persona's own ``FoxConfig``)
   * start the LemonSlice avatar with a *unique* participant identity per
     persona so multiple avatars can coexist in the room
-  * construct the ``Director``, hand it the personas + the primary
-    AgentSession, and wait for both personas' ``ready`` events before
-    delivering coordinated intros
-
-Only the *primary* persona (first in ``PERSONAS``) consumes the user
-microphone. Secondary personas set ``audio_input=False`` so we don't run
-STT twice on the same audio.
+  * construct the ``Director``, hand it the personas, and wait for every
+    persona's ``ready`` event before delivering coordinated intros
 """
 
 import asyncio
@@ -86,7 +81,7 @@ def _resolve_personas(metadata: dict) -> list[dict[str, str]]:
         return personas
 
     descriptors: list[dict[str, str]] = []
-    for name in (settings.PERSONAS or settings.FOX_CONFIG or "fox").split(","):
+    for name in (settings.PERSONAS or "fox").split(","):
         name = name.strip()
         if not name:
             continue
@@ -183,6 +178,17 @@ def _avatar_identity_for(persona_name: str) -> str:
     return f"lemonslice-avatar-{persona_name}"
 
 
+# Track-name prefix the extension uses to peel a persona off a direct-publish
+# audio track. Each audio-only persona publishes under
+# ``persona-<name>`` (e.g. ``persona-fox``) so the side-panel can route both
+# tracks separately even though they share one ``local_participant``.
+_PERSONA_TRACK_PREFIX = "persona-"
+
+
+def _persona_track_name(persona_name: str) -> str:
+    return f"{_PERSONA_TRACK_PREFIX}{persona_name}"
+
+
 @server.rtc_session(agent_name=settings.AGENT_NAME)
 async def entrypoint(ctx: JobContext) -> None:
     """Per-job entrypoint — called by the LiveKit agent worker."""
@@ -199,13 +205,10 @@ async def entrypoint(ctx: JobContext) -> None:
     vad = ctx.proc.userdata["vad"]
     session_id = metadata.get("session_id")
 
-    sessions: list[AgentSession] = []
     personas: list[PersonaAgent] = []
     avatar_identities: dict[str, str] = {}
 
-    # Build each persona + its session + its avatar. The first persona
-    # in the list is the *primary* — it owns user-mic STT.
-    for idx, descriptor in enumerate(persona_descriptors):
+    for descriptor in persona_descriptors:
         name = descriptor["name"]
         avatar_url = descriptor.get("avatar_url")
         config = load_config(name)
@@ -217,32 +220,47 @@ async def entrypoint(ctx: JobContext) -> None:
         )
 
         session = _build_session(config, vad=vad)
-        sessions.append(session)
 
         identity = _avatar_identity_for(name)
-        avatar_identities[name] = identity
-        await _start_avatar(
+        avatar_session_id = await _start_avatar(
             config=config,
             avatar_url=avatar_url,
             session=session,
             ctx=ctx,
             identity=identity,
         )
+        # Only register the identity when an avatar was actually started —
+        # otherwise the Director would block for the full
+        # ``avatar.startup_timeout_s`` waiting on a participant that will
+        # never publish, and the intro gets skipped. Audio-only personas
+        # must still deliver their intro.
+        if avatar_session_id is not None:
+            avatar_identities[name] = identity
 
         persona = PersonaAgent(config=config, session_id=session_id)
         personas.append(persona)
 
-        # Only the primary owns the user mic — secondaries skip audio_input
-        # so we don't run STT twice on the same MediaStreamTrack.
-        is_primary = idx == 0
+        # When an avatar is active it owns audio output (LemonSlice
+        # republishes the TTS audio lip-synced); enabling the session's
+        # own audio track would double-publish. With no avatar, the
+        # session MUST publish audio itself or TTS has no sink and every
+        # speech handle resolves instantly with zero bytes on the wire.
+        has_avatar = avatar_session_id is not None
+        if has_avatar:
+            audio_output: room_io.AudioOutputOptions | bool = False
+        else:
+            # All audio-only personas share `ctx.room.local_participant`,
+            # so the default track name "roomio_audio" would collide and
+            # the side-panel can't tell whose voice is whose. Give each
+            # persona's published track a unique name so the extension
+            # routes each one to its own audio-graph node.
+            audio_output = room_io.AudioOutputOptions(track_name=_persona_track_name(name))
         await session.start(
             agent=persona,
             room=ctx.room,
             room_options=room_io.RoomOptions(
-                audio_input=True if is_primary else False,
-                # Avatar audio is routed through LemonSlice — disable the
-                # session's own audio output so it doesn't double-publish.
-                audio_output=False,
+                audio_input=False,
+                audio_output=audio_output,
                 # Don't auto-close the AgentSession on a participant
                 # disconnect. A brief extension reconnect (tab audio
                 # hiccup, side-panel refresh) would otherwise kill the
@@ -271,13 +289,12 @@ async def entrypoint(ctx: JobContext) -> None:
         except Exception:
             logger.warning("ctx.shutdown raised", exc_info=True)
 
-    # Director takes over: intros, speaker selection, user PTT routing.
+    # Director takes over: intros, speaker selection, commentary cadence.
     # It owns per-persona avatar-readiness gating so one slow avatar can't
     # stall the other persona's intro (or the room entirely).
     director = Director(
         personas=personas,
         room=ctx.room,
-        primary_session=sessions[0],
         avatar_identities=avatar_identities,
         session_id=session_id,
         on_user_disconnect=_end_job_on_user_disconnect,

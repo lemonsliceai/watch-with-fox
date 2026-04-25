@@ -29,15 +29,8 @@ function loadEnvFile(filename) {
 
 loadEnvFile(".env");
 
-const DEFAULT_API_URL = "http://localhost:8080";
+const DEFAULT_API_URL = "https://podcast-commentary-api.fly.dev";
 const API_URL = process.env.API_URL || DEFAULT_API_URL;
-
-if (API_URL === DEFAULT_API_URL) {
-  console.warn(
-    "[build] API_URL unset — bundling localhost. Fine for unpacked dev loads; " +
-      "set API_URL in chrome_extension/.env (or inline) before building for release.",
-  );
-}
 
 const buildOptions = {
   entryPoints: ["src/sidepanel.js"],

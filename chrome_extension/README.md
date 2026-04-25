@@ -96,15 +96,19 @@ LEMONSLICE_API_KEY=your-lemonslice-api-key
 # Agent name. Must differ from production to avoid dispatch collisions.
 AGENT_NAME=podcast-commentary-agent-local
 
-# Avatar image URL. Must be publicly reachable (not localhost).
-AVATAR_URL=http://localhost:8080/static/fox_2x3.jpg
+# Public base URL hosting the avatar images under /static/<filename>.
+# Independent of the API — by default the FastAPI server serves these
+# itself, so this is usually your API's public URL, but it can be any
+# public host (CDN, S3, GitHub Pages, ngrok, etc.). Leave unset to run
+# without avatars.
+AVATAR_BASE_URL=https://your-api.fly.dev
 
 # Optional. Leave blank to run without persistence.
 DATABASE_URL=
 ```
 
 > [!IMPORTANT]
-> `AVATAR_URL` must be reachable from LemonSlice Cloud's servers — `localhost` won't work. Either deploy the server or expose it with ngrok: `ngrok http 8080`.
+> `AVATAR_BASE_URL` must be reachable from LemonSlice Cloud's servers — `localhost` won't work. Either deploy the server, host the avatars on a public CDN/bucket, or expose your local server with ngrok: `ngrok http 8080`.
 
 </details>
 
@@ -144,8 +148,7 @@ curl http://localhost:8080/health
 3. The extension auto-detects the tab's URL and title.
 4. Click **Start Couchverse**.
 5. Fox and Alien appear and start reacting.
-6. Use **Hold to talk** to speak to them directly.
-7. Adjust volume sliders as needed.
+6. Adjust volume sliders as needed.
 
 ## Configuring the API URL
 
@@ -153,18 +156,18 @@ The extension talks to **one** API server, baked into the bundle at build time f
 
 | Goal | Setup |
 |---|---|
-| Local development (default) | No `.env` needed. `npm run build` bundles `http://localhost:8080`. |
-| Test against a deployed API | Set `API_URL` in `chrome_extension/.env`, rebuild, reload the unpacked extension. |
-| Publish your own Web Store build | Same as above. Set `API_URL` to your deployed server, then build and zip. |
+| Use the hosted Couchverse API (default) | No `.env` needed. `npm run build` bundles `https://podcast-commentary-api.fly.dev`. |
+| Local backend development | Set `API_URL=http://localhost:8080` in `chrome_extension/.env`, rebuild, reload the unpacked extension. |
+| Self-host on your own deployment | Set `API_URL` to your deployed server, then build and zip. |
 
 `chrome_extension/.env` is gitignored (covered by the root `.gitignore`); `chrome_extension/.env.example` is the template. You can also pass the URL inline for one-off builds:
 
 ```bash
-API_URL=https://your-api.fly.dev npm run build
+API_URL=http://localhost:8080 npm run build
 ```
 
 > [!TIP]
-> The build logs the embedded URL every run (`Build complete: ... (API_URL=...)`) and warns when it falls back to localhost — an accidental localhost release bundle is loud.
+> The build logs the embedded URL every run (`Build complete: ... (API_URL=...)`), so you can confirm what got bundled before reloading.
 
 ## How it works
 
@@ -245,7 +248,7 @@ Confirm:
 |---|---|---|
 | "Session creation failed" | API server not running | Start the API: `uv run uvicorn ...` |
 | Side panel shows "Connecting" forever | LiveKit credentials wrong or agent not running | Check `LIVEKIT_URL` / `KEY` / `SECRET` in `.env`, start the agent |
-| Fox or Alien avatar doesn't appear | `AVATAR_URL` not reachable from LemonSlice | Use a public URL or ngrok tunnel |
+| Fox or Alien avatar doesn't appear | `AVATAR_BASE_URL` not reachable from LemonSlice | Use a public URL or ngrok tunnel |
 | No commentary after 30 s | Tab audio not reaching agent | Check agent logs for "podcast audio frame" messages |
 | "Failed to capture tab audio" | Chrome permission issue | Make sure the target tab is the active tab when clicking start |
 

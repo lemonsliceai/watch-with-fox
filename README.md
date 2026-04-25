@@ -4,7 +4,7 @@
 
 ### Live AI commentary on whatever you're tuned into.
 
-Two AI co-hosts — **Fox** and **Alien** — react in real time to any audio playing in your browser tab. Think MST3K, except the hecklers live in your Chrome side panel and they'll cover a podcast or a TikTok feed as happily as a movie.
+Two AI co-hosts, **Fox** and **Alien**, react in real time to any audio playing in your browser tab. Think MST3K, except the hecklers live in your Chrome side panel and they'll cover a podcast or a TikTok feed as happily as a movie.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Chrome MV3](https://img.shields.io/badge/Chrome-MV3-4285F4?logo=googlechrome&logoColor=white)](chrome_extension/)
@@ -23,7 +23,7 @@ Two AI co-hosts — **Fox** and **Alien** — react in real time to any audio pl
 
 ## What it does
 
-Couchverse works on **any** website with audio — not just `youtube.com`. Anything a tab can play is fair game:
+Couchverse works on **any** website with audio, not just `youtube.com`. Anything a tab can play is fair game:
 
 - YouTube videos, podcasts in a web player, Spotify, SoundCloud mixes
 - livestreams, webinars, talking heads on TikTok, lecture replays
@@ -34,7 +34,6 @@ The hosts don't know or care what site the audio came from. They only hear it.
 
 - **Zero server-side audio extraction.** The extension captures the tab with `chrome.tabCapture` and publishes it to LiveKit. The agent subscribes to the track. No scraping, no per-site hacks.
 - **Two personas out of the box.** Fox (the comedian) and Alien (the chaos agent) share one `FoxConfig` schema, so swapping or adding personalities is a single file drop.
-- **Talk back.** Hold a button in the side panel to speak to the hosts; they'll listen and reply.
 - **Optional persistence.** Plug in Neon PostgreSQL to log conversations, or leave `DATABASE_URL` blank and run ephemerally.
 - **Portable.** Frontend runs anywhere Chrome does; the server runs locally with `uv` or on Fly.io with two processes.
 
@@ -125,7 +124,7 @@ Fox's foil. Gets weird, misreads things on purpose, interrupts with non-sequitur
 </tr>
 </table>
 
-Both are driven by the same `FoxConfig` schema in `server/src/podcast_commentary/agent/`. Drop a new file in `fox_configs/` and point `FOX_CONFIG` at it to add a persona. See the [server README](server/README.md#foxconfig--tuning-host-behaviour) for the full walkthrough.
+Both are driven by the same `FoxConfig` schema in `server/src/podcast_commentary/agent/`. Drop a new file in `fox_configs/` and add it to `PERSONAS` to load it. See the [server README](server/README.md#foxconfig--tuning-host-behaviour) for the full walkthrough.
 
 ## Project layout
 

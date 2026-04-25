@@ -6,8 +6,8 @@ ritual, because a click landing between Fox's intro ending and Alien's
 intro starting would cut Alien off mid-sentence.
 
 ``SkipCoordinator`` scopes interrupts to the set of phases the user
-*meant* to skip: only active commentary / user-reply turns. Intros are
-protected by construction.
+*meant* to skip: only active commentary turns. Intros are protected by
+construction.
 
 Keeping this in its own module decouples the Director's orchestration
 logic from the skip-policy decision, and makes the policy trivially
@@ -24,9 +24,9 @@ from podcast_commentary.agent.comedian import FoxPhase, PersonaAgent
 logger = logging.getLogger("podcast-commentary.skip")
 
 
-# Phases the Skip button is allowed to cut off. Intros, user-talking,
-# and idle listening are explicitly NOT in this set.
-_SKIPPABLE_PHASES: frozenset[FoxPhase] = frozenset({FoxPhase.COMMENTATING, FoxPhase.REPLYING})
+# Phases the Skip button is allowed to cut off. Intros and idle
+# listening are explicitly NOT in this set.
+_SKIPPABLE_PHASES: frozenset[FoxPhase] = frozenset({FoxPhase.COMMENTATING})
 
 
 class SkipCoordinator:

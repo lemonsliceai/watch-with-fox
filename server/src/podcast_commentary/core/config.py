@@ -20,11 +20,14 @@ class Settings(BaseSettings):
     # LemonSlice — avatar rendering
     LEMONSLICE_API_KEY: str | None = None
 
-    # Public base URL that hosts the avatar images (e.g. your Fly.io host
-    # or an ngrok tunnel). LemonSlice Cloud fetches the images from its
-    # own servers so localhost won't work. Combined with each preset's
-    # ``AvatarConfig.avatar_image`` to form the final URL. Leave unset
-    # to run without avatars.
+    # Public base URL that hosts the avatar images under ``/static/``.
+    # Independent of the API server: by default the FastAPI process
+    # serves these itself (so this is typically the API's public URL),
+    # but it can be any public host — CDN, object store, etc. — as long
+    # as the images live under ``/static/``. Combined with each preset's
+    # ``AvatarConfig.avatar_image`` filename to form the final URL.
+    # LemonSlice Cloud fetches from its own servers, so localhost won't
+    # work. Leave unset to run without avatars.
     AVATAR_BASE_URL: str | None = None
 
     # Server
@@ -40,14 +43,9 @@ class Settings(BaseSettings):
 
     # Comma-separated list of FoxConfig presets to load. Each preset becomes
     # one on-screen persona; the Director picks who speaks each turn. The
-    # first persona in the list is the "primary" — it owns the user mic STT
-    # (push-to-talk) and its timing values drive shared cadence.
-    # Defaults to Fox + Alien for the dual-avatar experience.
+    # first persona's timing values drive shared cadence. Defaults to Fox +
+    # Alien for the dual-avatar experience.
     PERSONAS: str = "fox,chaos_agent"
-
-    # Legacy single-persona selector. If set and PERSONAS is empty, falls
-    # back to a single persona using this name. Kept for back-compat.
-    FOX_CONFIG: str = "fox"
 
     # Speaker-selection LLM (Director judge). Cheap + fast wins here — we
     # only need a JSON pick, not creative writing. Same Groq model as the

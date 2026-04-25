@@ -42,6 +42,7 @@ server/livekit.toml
 # Build artifacts
 dist/
 build/
+couchverse-extension.zip
 
 # Lock files (uv.lock is committed)
 package-lock.json

@@ -45,7 +45,7 @@ See [`chrome_extension/README.md`](chrome_extension/README.md) and [`server/READ
 
 ## Environment
 
-All env vars go in `server/.env` (see `server/.env.example`). The Chrome extension reads its API URL from a build-time `API_URL` baked into the bundle (defaults to `http://localhost:8080` when built without one).
+All env vars go in `server/.env` (see `server/.env.example`). The Chrome extension reads its API URL from a build-time `API_URL` baked into the bundle (defaults to the hosted `https://podcast-commentary-api.fly.dev`; override in `chrome_extension/.env` to `http://localhost:8080` for local backend dev).
 
 ## Code style
 

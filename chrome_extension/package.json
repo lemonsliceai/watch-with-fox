@@ -5,7 +5,8 @@
   "description": "Chrome extension for Couchverse",
   "scripts": {
     "build": "node build.js",
-    "watch": "node build.js --watch"
+    "watch": "node build.js --watch",
+    "package": "npm run build && rm -f ../couchverse-extension.zip && zip -r ../couchverse-extension.zip manifest.json background.js content.js sidepanel.html styles.css dist icons"
   },
   "dependencies": {
     "esbuild": "^0.25.0",

@@ -19,8 +19,8 @@ async def _get_pool() -> asyncpg.Pool:
             raise RuntimeError("DATABASE_URL not set")
         _pool = await asyncpg.create_pool(
             settings.DATABASE_URL,
-            min_size=1,
-            max_size=5,
+            min_size=2,
+            max_size=10,
             command_timeout=15,
         )
     return _pool
@@ -87,9 +87,9 @@ async def run_migrations() -> None:
             )
         """)
         # Unified conversation log: every utterance by every speaker in the
-        # room (podcast audio STT, user push-to-talk STT, agent TTS replies),
-        # plus system events like rolling summaries. Enables historic replay
-        # and post-hoc analysis of each session.
+        # room (podcast audio STT, agent TTS replies), plus system events
+        # like rolling summaries. Enables historic replay and post-hoc
+        # analysis of each session.
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS conversation_messages (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -168,10 +168,10 @@ async def log_conversation_message(
 ) -> None:
     """Append a single utterance/event to the conversation log.
 
-    `role` is one of: 'podcast' (STT of the YouTube audio), 'user' (STT of
-    the listener's push-to-talk mic), 'agent' (Fox's reply), 'system'
-    (rolling summary snapshots and lifecycle events). Silently skips if
-    DATABASE_URL isn't configured so local dev without a DB still works.
+    `role` is one of: 'podcast' (STT of the tab audio), 'agent' (a
+    persona's reply), 'system' (rolling summary snapshots and lifecycle
+    events). Silently skips if DATABASE_URL isn't configured so local dev
+    without a DB still works.
     """
     pool = await _try_get_pool()
     if pool is None:

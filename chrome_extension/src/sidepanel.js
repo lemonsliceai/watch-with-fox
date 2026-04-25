@@ -21,9 +21,8 @@ const $ = (sel) => document.querySelector(sel);
 
 // ── API URL ──
 // Inlined at build time from `API_URL` in chrome_extension/.env (see
-// build.js + .env.example). Defaults to http://localhost:8080 when unset
-// — fine for unpacked dev loads, but a release build for the Chrome Web
-// Store must set API_URL to a deployed server before bundling.
+// build.js + .env.example). Defaults to the hosted Couchverse API;
+// override to http://localhost:8080 for local backend development.
 const API_URL = __API_URL__;
 
 // ── State ──
@@ -73,9 +72,19 @@ const introNow = new Set();
 // Routing decisions in onTrackSubscribed / onActiveSpeakers parse the suffix.
 const AVATAR_IDENTITY_PREFIX = "lemonslice-avatar-";
 
+// Audio-only personas all publish from the agent's single local_participant,
+// so the participant identity can't disambiguate them. Each persona's TTS
+// track is named persona-<name> on the server (main.py) so we can.
+const PERSONA_TRACK_PREFIX = "persona-";
+
 function personaFromAvatarIdentity(identity) {
   if (!identity || !identity.startsWith(AVATAR_IDENTITY_PREFIX)) return null;
   return identity.slice(AVATAR_IDENTITY_PREFIX.length);
+}
+
+function personaFromTrackName(name) {
+  if (!name || !name.startsWith(PERSONA_TRACK_PREFIX)) return null;
+  return name.slice(PERSONA_TRACK_PREFIX.length);
 }
 
 function slotFor(personaName) {
@@ -440,14 +449,20 @@ async function captureAndPublishTabAudio() {
 
 // ── LiveKit Event Handlers ──
 function onTrackSubscribed(track, publication, participant) {
-  const personaName = personaFromAvatarIdentity(participant.identity);
+  const avatarPersona = personaFromAvatarIdentity(participant.identity);
+  const trackPersona = personaFromTrackName(
+    track.name || publication?.trackName,
+  );
+  const personaName = avatarPersona || trackPersona;
   const isAvatarTrack =
-    personaName !== null || participant.attributes?.["lk.publish_on_behalf"];
+    avatarPersona !== null || participant.attributes?.["lk.publish_on_behalf"];
 
-  // All persona voice audio (avatar + the now-dormant direct-publish
-  // fallback) routes through the shared audio graph so the sidechain
-  // envelope follower can see it. Routing key is the persona name when
-  // known, participant identity otherwise.
+  // All persona voice audio (avatar + audio-only direct-publish) routes
+  // through the shared audio graph so the sidechain envelope follower
+  // can see it. Routing key is the persona name when we can derive one
+  // (avatar identity or persona-<name> track name), participant identity
+  // otherwise — but two audio-only personas share an identity, so the
+  // track-name fallback is required to keep them distinct.
   if (track.kind === Track.Kind.Audio) {
     const key = personaName || `id:${participant.identity}`;
     attachPersonaAudio(track, key);
@@ -478,10 +493,12 @@ function onTrackSubscribed(track, publication, participant) {
 
 function onTrackUnsubscribed(track, publication, participant) {
   if (track.kind === Track.Kind.Audio) {
-    const personaName = personaFromAvatarIdentity(participant.identity);
+    const personaName =
+      personaFromAvatarIdentity(participant.identity) ||
+      personaFromTrackName(track.name || publication?.trackName);
     const key = personaName || `id:${participant.identity}`;
     if (personaNodes.has(key)) {
-      detachPersonaAudio(key, track);
+      detachPersonaAudio(key);
       return;
     }
   }
@@ -853,32 +870,25 @@ function teardownAudioGraph() {
 function attachPersonaAudio(track, key) {
   if (personaNodes.has(key)) detachPersonaAudio(key);
 
-  // Keep a muted <audio> element in the DOM purely as a WebRTC receiver
-  // wake-up. Chrome won't pull RTP samples through a remote track unless
-  // something is consuming it, and a playing media element is the cheapest
-  // way to keep the pipe open. The element itself emits no sound — the
-  // graph below drives the speakers via createMediaStreamSource on the
-  // underlying MediaStreamTrack.
-  //
-  // We previously used createMediaElementSource, which is *supposed* to
-  // divert the element's audio into the graph. In a multi-avatar room
-  // the second avatar's source node sometimes failed to divert cleanly:
-  // the element kept playing at its default 1.0 gain through the default
-  // output, while the graph never saw samples. When that bit Alien, the
-  // trim never applied AND the analyser never fired the duck — so Alien
-  // sounded quiet AND the tab stayed loud, which read as Alien "ducking
-  // themself". Pulling from the MediaStreamTrack directly avoids the
-  // divert path entirely and keeps the graph the single source of truth
-  // for what reaches the speakers.
+  // Chrome's WebRTC pipeline doesn't deliver samples to a
+  // MediaStreamAudioSourceNode unless *something* is also consuming the
+  // underlying remote track as a media element. When an avatar is
+  // attached, its own `<video>` sink provides that consumer. For direct-
+  // publish audio-only personas there's no such sink, so the graph runs
+  // dry and the user hears silence despite RTP arriving. Attach the track
+  // to a hidden audio element with `volume = 0` purely as a wake-up
+  // consumer — it never produces sound (volume-zero is reliable on
+  // remote tracks where `muted = true` historically wasn't) but it keeps
+  // RTP flowing so the source node below actually sees samples.
   const el = track.attach();
-  el.muted = true;
+  el.volume = 0;
   $("#audio-container").appendChild(el);
 
   if (!audioCtx) {
     // Extreme-edge fallback: graph not ready. Let the element play
     // directly so the user still hears the comedian; no sidechain input
     // this session. Better than silence.
-    el.muted = false;
+    el.volume = 1;
     return;
   }
 
@@ -888,7 +898,7 @@ function attachPersonaAudio(track, key) {
     source = audioCtx.createMediaStreamSource(mediaStream);
   } catch (err) {
     console.warn("[ext] createMediaStreamSource failed for", key, err);
-    el.muted = false;
+    el.volume = 1;
     return;
   }
 
@@ -912,15 +922,14 @@ function attachPersonaAudio(track, key) {
   personaNodes.set(key, { source, trimGain, analyser, buffer, audioEl: el, track });
 }
 
-function detachPersonaAudio(key, track) {
+function detachPersonaAudio(key) {
   const node = personaNodes.get(key);
   if (!node) return;
   try { node.source.disconnect(); } catch {}
   try { node.trimGain.disconnect(); } catch {}
   try { node.analyser.disconnect(); } catch {}
-  const t = track || node.track;
-  try { t?.detach(node.audioEl); } catch {}
-  node.audioEl.remove();
+  try { node.track?.detach(node.audioEl); } catch {}
+  node.audioEl?.remove();
   personaNodes.delete(key);
 }
 

@@ -2,8 +2,8 @@
 
 System prompt (personality + rules) is set once on Agent construction.
 Per-turn context (transcript, history, angle) is assembled by
-``build_commentary_request`` / ``build_user_reply_request`` and passed as
-the ``user_input`` to ``generate_reply``.
+``build_commentary_request`` and passed as the ``user_input`` to
+``generate_reply``.
 
 All prompt text is sourced from each persona's FoxConfig — see
 ``fox_config.py`` and ``fox_configs/<persona>.py``. The functions below
@@ -160,44 +160,6 @@ def build_commentary_request(
     parts.append(f"[ENERGY] {energy_level}")
     parts.append(f"[LENS: {angle}]")
     parts.append(config.persona.commentary_cta)
-
-    length_block = _length_block(length_hint)
-    if length_block:
-        parts.append(length_block)
-
-    sampling = _sampling_instruction(config)
-    if sampling:
-        parts.append(sampling)
-
-    return "\n\n".join(parts)
-
-
-def build_user_reply_request(
-    *,
-    config: FoxConfig,
-    user_text: str,
-    recent_transcript: str,
-    commentary_history: list[str],
-    angle: str | None = None,
-    co_speaker_history: list[str] | None = None,
-    co_speaker_label: str | None = None,
-    length_hint: str | None = None,
-) -> str:
-    """Assemble the per-turn prompt for a push-to-talk reply."""
-    if angle is None:
-        angle = pick_angle([], config=config)
-
-    parts = _format_context_bundle(
-        config,
-        recent_transcript=recent_transcript,
-        commentary_history=commentary_history,
-        co_speaker_history=co_speaker_history,
-        co_speaker_label=co_speaker_label,
-    )
-
-    parts.append(f'[YOUR FRIEND ON THE COUCH JUST SPOKE TO YOU]\nThey said: "{user_text}"')
-    parts.append(f"[LENS: {angle}]")
-    parts.append(config.persona.user_reply_cta)
 
     length_block = _length_block(length_hint)
     if length_block:

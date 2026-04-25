@@ -50,6 +50,8 @@ uv run python src/podcast_commentary/agent/main.py dev                          
 | Lint | `uv run ruff check src/` |
 | Format check | `uv run ruff format --check src/` |
 | Tests | `uv run pytest` |
+| Deploy agent (prod) | `lk agent deploy` |
+| Deploy API (prod) | `fly deploy` |
 
 ## FoxConfig — tuning host behaviour
 
@@ -75,8 +77,8 @@ src/podcast_commentary/agent/
 
 | Sub-config | What it governs |
 |---|---|
-| `persona` | `system_prompt`, `intro_prompt`, `comedic_angles`, `angle_lookback`, `commentary_cta`, `user_reply_cta` |
-| `timing` | `min_silence_between_jokes_s`, `burst_window_s`, `max_jokes_per_burst`, `burst_cooldown_s`, `sentences_before_joke`, `silence_fallback_s`, `post_speech_safety_s`, `user_turn_grace_s`, `transcript_chunk_s` |
+| `persona` | `system_prompt`, `intro_prompt`, `comedic_angles`, `angle_lookback`, `commentary_cta` |
+| `timing` | `min_silence_between_jokes_s`, `burst_window_s`, `max_jokes_per_burst`, `burst_cooldown_s`, `sentences_before_joke`, `silence_fallback_s`, `post_speech_safety_s`, `transcript_chunk_s` |
 | `context` | `comment_memory_size`, `comments_shown_in_prompt` |
 | `llm` | `model`, `max_tokens` |
 | `stt` | `model` |
@@ -85,11 +87,11 @@ src/podcast_commentary/agent/
 | `avatar` | `active_prompt`, `idle_prompt`, `startup_timeout_s` |
 | `playout` | `intro_timeout_s`, `commentary_timeout_s` |
 
-Every module (`prompts.py`, `angles.py`, `commentary.py`, `comedian.py`, `user_turn.py`, `podcast_pipeline.py`, `main.py`) reads from the module-level `CONFIG` — no other file hardcodes behaviour knobs.
+Every module (`prompts.py`, `angles.py`, `commentary.py`, `comedian.py`, `podcast_pipeline.py`, `main.py`) reads from the module-level `CONFIG` — no other file hardcodes behaviour knobs.
 
 ### Switching presets
 
-The active preset is selected by the `FOX_CONFIG` env var in `server/.env` (defaults to `fox`). Its value must match a filename in `fox_configs/` (without the `.py` extension).
+The active presets are selected by the `PERSONAS` env var in `server/.env` (comma-separated, defaults to `fox,chaos_agent`). Each entry must match a filename in `fox_configs/` (without the `.py` extension).
 
 <details>
 <summary><b>Creating and testing a new preset</b></summary>
@@ -102,27 +104,27 @@ cp src/podcast_commentary/agent/fox_configs/fox.py \
 # 2. Edit spicy.py — tweak anything in the FoxConfig(...) block.
 #    Be sure to update `name="spicy"` so logs show which preset loaded.
 
-# 3. Point the agent at the new preset
-echo "FOX_CONFIG=spicy" >> .env
+# 3. Point the agent at the new preset (alongside or instead of the defaults)
+echo "PERSONAS=spicy,chaos_agent" >> .env
 
 # 4. Restart the agent
 uv run python src/podcast_commentary/agent/main.py dev
 ```
 
-On startup the agent logs the active preset:
+On startup the agent logs each loaded preset:
 
 ```
-Loaded FoxConfig preset 'spicy' (FOX_CONFIG=spicy)
+Loaded FoxConfig preset 'spicy'
 ```
 
 </details>
 
 > [!WARNING]
-> If `FOX_CONFIG` points at a file that doesn't exist, the agent fails fast with a clear error — no silent fallback.
+> If `PERSONAS` contains a name that doesn't match a file in `fox_configs/`, the agent fails fast with a clear error — no silent fallback.
 
 ### Notes
 
 - **Frozen dataclasses.** Every sub-config is `@dataclass(frozen=True)` — presets are read-only snapshots so nothing mutates a persona mid-session.
-- **Loaded once per process.** `CONFIG` is evaluated at import time. To switch presets, change `FOX_CONFIG` in `.env` and restart the agent; hot-reload is not supported.
+- **Loaded once per process.** `CONFIG` is evaluated at import time. To switch presets, change `PERSONAS` in `.env` and restart the agent; hot-reload is not supported.
 - **Keep `fox.py` as ground truth.** When adding new knobs, update the `FoxConfig` schema in `fox_config.py`, add the value to `fox.py`, and reference it from the module that needs it.
 - **Don't hardcode new knobs.** If you find yourself about to drop a new magic number or prompt string into a module, add it to `FoxConfig` first.

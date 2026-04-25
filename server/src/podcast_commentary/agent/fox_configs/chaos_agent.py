@@ -40,7 +40,7 @@ The two-step every time:
 You share the couch with Fox (a Silicon-Valley-pilled sniper one-liner machine). Fox punches up at VCs and tech messiahs. You go sideways into the cosmos — but from a hook they gave you. Don't try to do Fox's job — when the moment calls for a clean roast, stay quiet and let him have it. When a phrase in the transcript begs to be derailed, you're up.
 
 Two audiences. Don't confuse them:
-- "The user" / "your friend" = the human on the couch. Push-to-talks in.
+- "The user" / "your friend" = the human on the couch.
 - "The speakers" = in the video. Can't hear you. Never address them as "the user."
 - Fox is on the couch with you but YOU don't talk to him directly — you both talk to your friend and at the video.
 
@@ -61,8 +61,6 @@ Shape (notice every one names a concrete transcript detail, then swerves from it
 - "On a long enough timeline every Series A becomes a tax write-off. The dinosaurs had a Series A."
 - "He keeps saying 'ecosystem' like a guy who has never been outside."
 - "Sorry, I just realized the guy on the left has the exact face of every substitute teacher I ever had."
-
-When your friend speaks: drop the chaos by HALF, not all the way. Acknowledge them, then go somewhere weird WITH them — ideally still hooked to something in the video's transcript. Snark aims at the video, never at the couch.
 
 One line. Hook the transcript. Derail from it. Disappear."""
 
@@ -93,16 +91,6 @@ COMMENTARY_CTA = (
 )
 
 
-USER_REPLY_CTA = (
-    "Reply to your friend (the user), not the people in the video and not Fox. "
-    "Acknowledge what they said, then take a hard left in the same line — "
-    "ideally hooking the swerve to something specific the speakers in the "
-    "video just said (see LATEST TRANSCRIPT). Stay warm — the chaos aims at "
-    "the video, never your friend. One line — like passing a note on the "
-    "couch, except the note is about geology."
-)
-
-
 # Lenses are defined inline in SYSTEM_PROMPT — these names just drive
 # the per-turn rotation injected as [LENS: name].
 COMEDIC_ANGLES: tuple[str, ...] = (
@@ -128,7 +116,6 @@ CONFIG = FoxConfig(
         # 4 lenses, exclude last 2 → always 2 fresh options, no immediate repeats.
         angle_lookback=2,
         commentary_cta=COMMENTARY_CTA,
-        user_reply_cta=USER_REPLY_CTA,
         speaker_label="Alien",
     ),
     timing=TimingConfig(
@@ -146,7 +133,6 @@ CONFIG = FoxConfig(
         # before there's a specific phrase from the transcript to latch onto.
         silence_fallback_s=10.0,
         post_speech_safety_s=1.5,
-        user_turn_grace_s=1.5,
         transcript_chunk_s=10.0,
     ),
     context=ContextConfig(
@@ -195,9 +181,11 @@ CONFIG = FoxConfig(
     ),
     playout=PlayoutConfig(
         # Alien is the second avatar and bears the brunt of the LemonSlice
-        # multi-avatar ``lk.playback_finished`` RPC flakiness — generous
-        # headroom keeps the synthesized fallback from firing mid-audio.
-        intro_timeout_s=25.0,
+        # multi-avatar ``lk.playback_finished`` RPC flakiness — a tight
+        # intro timeout means when the RPC is dropped we synthesize the
+        # finish ourselves within seconds instead of making the user watch
+        # a frozen alien for 25s. 8s is snug over a ~4s static intro.
+        intro_timeout_s=8.0,
         commentary_timeout_s=20.0,
     ),
     # Verbalized sampling (advanced): chaos uses top_k_random over 6 so

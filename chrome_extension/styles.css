@@ -1,83 +1,74 @@
-/* Couchverse Cozy Companion HUD
-   Lo-fi warmth, cozy game UI, VTuber overlay structure.
-   Warm dark palette, grain texture, rounded game panels,
-   speech-bubble captions, companion-gadget feel. */
+/* Couchverse Side Panel — neobrutalist couch theme.
+   Mirrors the marketing site (couchverse-web): cream paper,
+   ink borders, hard pop shadows, Bricolage display type,
+   grain overlay. Tuned for the narrow side-panel viewport
+   (smaller pop offsets, tighter padding) without losing the
+   chunky hand-drawn vibe. */
 
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700&family=Lora:ital,wght@0,400;0,500;1,400;1,500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@500;600;700&display=swap');
 
 :root {
-  /* ── Backgrounds ── */
-  --deep:           #1A1410;
-  --surface:        #2D2420;
-  --elevated:       #3D3430;
-  --sunken:         #140F0B;
-
-  /* ── Borders ── */
-  --edge:           #4D4440;
-  --edge-warm:      #5D4A3A;
-  --frame:          #6B5B4B;
-
-  /* ── Accent (terracotta) ── */
-  --accent:         #D4845A;
-  --accent-hover:   #E0956B;
-  --accent-glow:    rgba(212, 132, 90, 0.18);
-  --accent-soft:    rgba(212, 132, 90, 0.12);
-
-  /* ── Text ── */
-  --warm:           #F2E8DC;
-  --secondary:      #A89888;
-  --muted:          #7A6A5A;
-  --faint:          #5A4A3A;
-  --caption:        #FFFFFF;
-
-  /* ── Reactions ── */
-  --love:           #E88B8B;
-  --laugh:          #F0C674;
-  --fire:           #E8734A;
-
-  /* ── Status ── */
-  --online:         #6BCB77;
-  --danger:         #E85A5A;
+  /* ── Palette (lifted from couchverse-web/app/globals.css) ── */
+  --cream:        #faf2dc;
+  --cream-dark:   #f0e3bf;
+  --paper:        #fffaec;
+  --ink:          #2a1810;
+  --ink-soft:     #5a3a28;
+  --ink-faint:    rgba(42, 24, 16, 0.55);
+  --fox:          #ff6a1a;
+  --fox-deep:     #c44a08;
+  --alien:        #7ed4c2;
+  --alien-deep:   #3e9d8a;
+  --cheek:        #f4a3b8;
+  --yolk:         #fcd449;
+  --plum:         #6e3c8a;
+  --danger:       #c4391f;
 
   /* ── Shape ── */
-  --radius:         16px;
-  --radius-sm:      10px;
-  --radius-xs:      6px;
+  --radius:       18px;
+  --radius-sm:    12px;
+  --radius-xs:    8px;
+
+  /* ── Pop shadows (hard offset, no blur — the signature look) ──
+     Side-panel is narrow, so the offsets are pulled in vs. the web
+     site's 6/8/10 to keep cards from feeling crowded. */
+  --pop-xs:       2px 2px 0 0 var(--ink);
+  --pop-sm:       3px 3px 0 0 var(--ink);
+  --pop:          4px 4px 0 0 var(--ink);
+  --pop-lg:       6px 6px 0 0 var(--ink);
 
   /* ── Typography ── */
-  --font-sans:      "DM Sans", system-ui, -apple-system, sans-serif;
-  --font-serif:     "Lora", Georgia, serif;
-
-  /* ── Shadows (warm-tinted) ── */
-  --shadow-sm:      0 2px 8px rgba(20, 15, 11, 0.4);
-  --shadow-md:      0 4px 16px rgba(20, 15, 11, 0.5);
-  --shadow-lg:      0 8px 32px rgba(20, 15, 11, 0.6);
-  --shadow-glow:    0 0 20px var(--accent-glow);
+  --font-sans:    "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: "Bricolage Grotesque", "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono:    "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
   font-family: var(--font-sans);
-  background: var(--deep);
-  color: var(--warm);
+  background: var(--cream);
+  color: var(--ink);
   font-size: 13px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   overflow-x: hidden;
 }
 
-/* ── Grain texture overlay (lo-fi) ── */
+/* ── Grain texture overlay — same SVG noise as couchverse-web,
+   slightly more transparent so it doesn't overwhelm the smaller
+   surface area. ── */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: 9999;
-  opacity: 0.035;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-repeat: repeat;
-  background-size: 256px 256px;
+  opacity: 0.14;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml;utf8,<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.16 0 0 0 0 0.09 0 0 0 0 0.06 0 0 0 0.6 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  background-size: 220px 220px;
 }
 
 #app {
@@ -87,9 +78,6 @@ body::before {
      actually shrink to fit the viewport — with min-height the avatars
      would blow past the fold instead of splitting the available space. */
   height: 100vh;
-  /* Fill the Chrome side panel width with a small breathing margin on
-     each side. No narrow-column cap — the avatars use flex + min-height
-     to shrink when their 2:3 aspect would overflow the viewport. */
   padding: 12px 10px;
   gap: 12px;
 }
@@ -108,17 +96,18 @@ body::before {
   min-height: 0;
 }
 
-/* Fox + Alien stacked vertically — same sizing rules as
-   #avatars-stack / .avatar-slot on the session screen. */
 #cast-stack {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 14px;
   flex: 1;
   min-height: 0;
 }
 
+/* Cast portrait — paper card with ink border + pop shadow. The two
+   portraits get opposing tilts so the stack reads like stickers on
+   a notebook, matching the marketing site's CrewCard rhythm. */
 .cast-portrait {
   position: relative;
   flex: 1 1 0;
@@ -126,11 +115,20 @@ body::before {
   aspect-ratio: 2 / 3;
   width: auto;
   max-width: 100%;
-  background: var(--sunken);
-  border-radius: var(--radius-sm);
+  background: var(--paper);
+  border: 3px solid var(--ink);
+  border-radius: var(--radius);
   overflow: hidden;
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--pop);
   animation: preview-breathe 3s ease-in-out infinite;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+#cast-stack .cast-portrait:nth-child(odd)  { transform: rotate(-1.4deg); }
+#cast-stack .cast-portrait:nth-child(even) { transform: rotate(1.4deg); }
+#cast-stack .cast-portrait:hover {
+  transform: translate(-1px, -1px) rotate(0deg);
+  box-shadow: var(--pop-lg);
 }
 
 .cast-portrait img {
@@ -142,89 +140,93 @@ body::before {
   display: block;
 }
 
-/* Matches .avatar-slot .avatar-badge so the Fox/Alien nameplate is
-   identical on both screens. */
+/* Nameplate — pill chip with mono uppercase label, mirrors the
+   "// The Crew" + trait pills on the web site. */
 .cast-badge-wrap {
   position: absolute;
-  top: 8px;
-  left: 8px;
-  padding: 3px 10px;
-  backdrop-filter: blur(12px);
-  background: rgba(26, 20, 16, 0.8);
-  border: 2px solid var(--edge-warm);
-  border-radius: 18px;
-  box-shadow: var(--shadow-sm);
+  top: 10px;
+  left: 10px;
+  padding: 4px 10px;
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  box-shadow: var(--pop-xs);
   z-index: 10;
 }
 
 .cast-badge-wrap span {
-  font-size: 11px;
-  font-weight: 600;
-  font-family: var(--font-serif);
-  font-style: italic;
-  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink);
 }
 
-/* Controls panel at the bottom of the setup screen — visual twin
-   of #controls on the session screen, but hosts the primary CTA
-   (and the tucked-away API URL / error) instead of End. */
+/* ── Setup controls panel ── */
 #setup-controls {
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 14px;
-  background: var(--surface);
-  border: 2px solid var(--edge);
+  background: var(--paper);
+  border: 3px solid var(--ink);
   border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--pop);
 }
 
-/* Primary CTA — chunky game button */
+/* Primary CTA — fox-orange pop button (same recipe as the web
+   site's "Add to Chrome" hero button: ink border, paper text,
+   hard offset shadow that grows on hover). */
 .btn-primary {
   width: 100%;
-  padding: 13px 20px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--deep);
-  background: var(--accent);
-  border: 2px solid var(--accent-hover);
-  border-radius: var(--radius);
-  cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
-  box-shadow: var(--shadow-md), 0 0 0 0 var(--accent-glow);
+  padding: 12px 18px;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 800;
   letter-spacing: 0.01em;
+  color: var(--paper);
+  background: var(--fox);
+  border: 3px solid var(--ink);
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: var(--pop);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: var(--accent-hover);
-  transform: translateY(-2px) scale(1.01);
-  box-shadow: var(--shadow-lg), var(--shadow-glow);
+  background: var(--fox-deep);
+  transform: translate(-1px, -1px);
+  box-shadow: var(--pop-lg);
 }
 
 .btn-primary:active:not(:disabled) {
-  transform: translateY(0) scale(0.98);
+  transform: translate(1px, 1px);
+  box-shadow: var(--pop-xs);
 }
 
 .btn-primary:disabled {
-  opacity: 0.35;
   cursor: not-allowed;
-  border-color: var(--edge);
+  background: var(--cream-dark);
+  color: var(--ink-faint);
+  box-shadow: var(--pop-sm);
 }
 
 .btn-primary.loading {
-  opacity: 0.65;
   cursor: wait;
-  animation: pulse-glow 2s ease-in-out infinite;
+  animation: pulse-pop 1.6s ease-in-out infinite;
 }
 
+/* Inline error — cheek/danger accent on a paper chip */
 .error {
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--danger);
   padding: 8px 12px;
-  background: rgba(232, 90, 90, 0.08);
-  border: 1px solid rgba(232, 90, 90, 0.2);
+  background: var(--cheek);
+  border: 2px solid var(--ink);
   border-radius: var(--radius-sm);
+  box-shadow: var(--pop-xs);
 }
 
 .hidden { display: none !important; }
@@ -237,61 +239,50 @@ body::before {
   flex-direction: column;
   gap: 12px;
   flex: 1;
-  /* Allow the flex children to shrink — without this, the avatar slots
-     reserve their intrinsic aspect-ratio height and push #controls off
-     screen. */
   min-height: 0;
 }
 
-/* ════════════════════════════════════════════
-   Avatars — The Companion Stack
-   Two portrait slots stacked vertically. Chrome doesn't let extensions
-   set the side-panel width, so we constrain each slot to its 2:3 shape
-   (via height-derived width) and center it within the stack. When the
-   user drags the panel wide, the avatars stay portrait and gutter
-   appears beside them; header/controls fill the panel either way.
-   ════════════════════════════════════════════ */
+/* Two stacked avatar slots — same sizing rules as #cast-stack so
+   setup → live reads as the same space animating. */
 #avatars-stack {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 14px;
   flex: 1;
-  /* Required for the two flex-child slots to actually split the space
-     instead of each claiming its intrinsic (content-derived) height. */
   min-height: 0;
 }
 
 .avatar-slot {
   position: relative;
-  /* Flex hands each slot half the stack's height. `aspect-ratio: 2/3`
-     with `width: auto` then derives width = height × 2/3, so the slot
-     keeps a portrait shape regardless of how wide the panel is dragged.
-     `max-width: 100%` is the safety net for tall+narrow panels where
-     2/3 of the flex-allocated height would exceed the panel width. */
   flex: 1 1 0;
   min-height: 0;
   aspect-ratio: 2 / 3;
   width: auto;
   max-width: 100%;
-  background: var(--sunken);
-  border-radius: var(--radius-sm);
+  background: var(--paper);
+  border: 3px solid var(--ink);
+  border-radius: var(--radius);
   overflow: hidden;
-  transition: box-shadow 0.5s, border-color 0.5s;
+  box-shadow: var(--pop);
+  transition: transform 0.4s ease, box-shadow 0.4s ease;
 }
 
-/* Breathing glow when connected — the companion is "alive".
-   No border on the slot anymore, so the indication rides purely on
-   box-shadow (see the @keyframes companion-breathe block below). */
+#avatars-stack .avatar-slot:nth-child(odd)  { transform: rotate(-1.2deg); }
+#avatars-stack .avatar-slot:nth-child(even) { transform: rotate(1.2deg); }
+
+/* Breathing — gentle "alive" pulse on the pop shadow only, so the
+   slot still reads as a printed sticker rather than a glow. */
 .avatar-slot.breathing {
   animation: companion-breathe 3.5s ease-in-out infinite;
 }
 
-/* Speaking state — brighter glow on the active speaker only */
+/* Speaking — swap the ink shadow for a fox-orange one. Reads as
+   the comedian's spotlight without changing the slot's geometry. */
 .avatar-slot.speaking {
-  box-shadow:
-    0 0 0 2px var(--accent),
-    0 0 24px var(--accent-glow);
+  transform: rotate(0deg) translate(-1px, -1px);
+  box-shadow: 6px 6px 0 0 var(--fox);
+  animation: none;
 }
 
 .avatar-slot .avatar-video {
@@ -304,12 +295,7 @@ body::before {
   transition: opacity 0.6s ease-out;
 }
 
-/* ── Still preview → live video transition ──
-   The preview image sits underneath the (empty) video container, softly
-   pulsing while we wait for the LemonSlice track to connect. Once video
-   attaches, `.video-live` fades the video in over ~600ms and dims the
-   still image to zero — so it reads as the preview "animating into" the
-   live avatar instead of a hard swap. */
+/* Still preview → live video crossfade. */
 .avatar-slot .avatar-preview {
   position: absolute;
   inset: 0;
@@ -330,33 +316,33 @@ body::before {
   opacity: 1;
 }
 
-/* Name badge — game-style nameplate */
+/* Name badge — same pill chip as the cast portraits */
 .avatar-slot .avatar-badge {
   position: absolute;
-  top: 8px;
-  left: 8px;
-  backdrop-filter: blur(12px);
-  background: rgba(26, 20, 16, 0.8);
-  padding: 3px 10px;
-  border-radius: 18px;
-  border: 2px solid var(--edge-warm);
+  top: 10px;
+  left: 10px;
+  padding: 4px 10px;
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  box-shadow: var(--pop-xs);
   z-index: 10;
-  box-shadow: var(--shadow-sm);
 }
 
 .avatar-slot .avatar-badge span {
-  font-size: 11px;
-  font-weight: 600;
-  font-family: var(--font-serif);
-  font-style: italic;
-  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink);
 }
 
-/* ── Reactions container (floating particles) ── */
+/* Floating reaction particles — anchored above captions */
 .avatar-slot .reactions {
   position: absolute;
   bottom: 50px;
-  right: 10px;
+  right: 14px;
   z-index: 15;
   pointer-events: none;
 }
@@ -365,51 +351,53 @@ body::before {
   position: absolute;
   bottom: 0;
   right: 0;
-  font-size: 18px;
+  font-size: 20px;
   opacity: 0;
   animation: float-up 1.8s ease-out forwards;
 }
 
 /* ════════════════════════════════════════════
-   Captions — Game Dialogue Speech Bubbles
-   Each avatar slot owns its own captions stack so the bubble visually
-   anchors to the speaker, not floating in shared space.
+   Captions — pop-style speech bubbles.
+   Paper background, ink border, mini pop shadow, with the
+   freshest line getting yolk emphasis like the marketing site's
+   .hl highlight.
    ════════════════════════════════════════════ */
 .avatar-slot .captions {
   position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 10px;
+  bottom: 10px;
+  left: 10px;
+  right: 10px;
   z-index: 10;
   pointer-events: none;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
 }
 
 .avatar-slot .captions:empty { display: none; }
 
-/* Each caption is a speech bubble */
 .avatar-slot .captions .speech-bubble {
-  background: rgba(26, 20, 16, 0.88);
-  backdrop-filter: blur(10px);
-  border: 1.5px solid var(--edge);
+  position: relative;
+  background: var(--paper);
+  border: 2px solid var(--ink);
   border-radius: 14px 14px 14px 4px;
   padding: 6px 10px;
+  font-family: var(--font-sans);
   font-size: 11px;
+  font-weight: 500;
   line-height: 1.45;
-  color: rgba(242, 232, 220, 0.5);
-  transition: all 0.3s;
+  color: var(--ink-soft);
   max-width: 95%;
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--pop-xs);
+  transition: all 0.3s ease;
 }
 
 .avatar-slot .captions .speech-bubble:last-child {
-  color: var(--warm);
-  border-color: var(--edge-warm);
-  background: rgba(26, 20, 16, 0.92);
+  color: var(--ink);
+  font-weight: 600;
+  background: var(--yolk);
+  box-shadow: var(--pop-sm);
   animation: bubble-appear 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
@@ -417,59 +405,63 @@ body::before {
 .avatar-slot .captions .speech-bubble:last-child::after {
   content: "";
   position: absolute;
-  bottom: -6px;
-  left: 12px;
-  width: 12px;
-  height: 12px;
-  background: rgba(26, 20, 16, 0.92);
-  border-bottom: 1.5px solid var(--edge-warm);
-  border-left: 1.5px solid var(--edge-warm);
+  bottom: -8px;
+  left: 14px;
+  width: 14px;
+  height: 14px;
+  background: inherit;
+  border: 2px solid var(--ink);
+  border-top: 0;
+  border-right: 0;
   transform: rotate(-45deg);
-  clip-path: polygon(0 0, 0 100%, 100% 100%);
+  border-bottom-left-radius: 3px;
 }
 
 /* ════════════════════════════════════════════
-   Controls — Game HUD Panel
+   Controls — paper panel with ink border + pop shadow
    ════════════════════════════════════════════ */
 #controls {
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 14px;
-  background: var(--surface);
-  border: 2px solid var(--edge);
+  background: var(--paper);
+  border: 3px solid var(--ink);
   border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--pop);
 }
 
-/* ── Pacing disclosure ──
-   The two dials live behind a native <details> so they default closed
-   and the avatars get the height back. Summary row reads as a slim
-   tab with a chevron that rotates on open. */
+/* ── Pacing disclosure ── */
 #pacing-disclosure > summary {
   list-style: none;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 4px 4px 2px;
+  padding: 2px 2px 2px 2px;
   user-select: none;
 }
 
 #pacing-disclosure > summary::-webkit-details-marker { display: none; }
 
 .disclosure-label {
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fox-deep);
+}
+
+.disclosure-label::before {
+  content: "// ";
+  color: var(--ink-faint);
 }
 
 .disclosure-chevron {
   font-size: 14px;
   line-height: 1;
-  color: var(--secondary);
+  color: var(--ink-soft);
   transition: transform 0.2s ease;
 }
 
@@ -480,14 +472,13 @@ body::before {
 .disclosure-body {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding-top: 10px;
+  gap: 12px;
+  padding-top: 12px;
+  margin-top: 10px;
+  border-top: 2px dashed var(--ink-faint);
 }
 
-/* ── Pacing dials (chattiness / reply length) ──
-   Segmented control: three-button pill where the active value sits in
-   accent, the inactive ones fade back. Stacked label + hint above the
-   segments so the dial reads as a labeled knob, not a raw button row. */
+/* ── Pacing dials ── */
 .control-group {
   display: flex;
   flex-direction: column;
@@ -502,138 +493,141 @@ body::before {
 }
 
 .control-title {
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--accent);
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ink);
 }
 
 .control-hint {
-  font-size: 10px;
-  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--ink-soft);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em;
 }
 
+/* Segmented control — three pill buttons inside a paper trough,
+   active state is ink-on-paper (inverted), like the nav CTA. */
 .segmented {
   display: flex;
-  background: var(--sunken);
-  border: 2px solid var(--edge);
-  border-radius: var(--radius-sm);
-  padding: 2px;
-  gap: 2px;
+  background: var(--cream);
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  padding: 3px;
+  gap: 3px;
+  box-shadow: inset 0 1px 0 rgba(42, 24, 16, 0.06);
 }
 
 .seg-btn {
   flex: 1;
   padding: 6px 8px;
+  font-family: var(--font-sans);
   font-size: 11px;
-  font-weight: 600;
-  color: var(--secondary);
+  font-weight: 700;
+  color: var(--ink-soft);
   background: transparent;
   border: none;
-  border-radius: calc(var(--radius-sm) - 4px);
+  border-radius: 999px;
   cursor: pointer;
-  transition: color 0.15s, background 0.15s, box-shadow 0.15s;
-  font-family: var(--font-sans);
+  transition: color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
 
 .seg-btn:hover:not(.is-active) {
-  color: var(--warm);
-  background: rgba(255, 255, 255, 0.03);
+  color: var(--ink);
+  background: rgba(42, 24, 16, 0.05);
 }
 
 .seg-btn.is-active {
-  color: var(--deep);
-  background: var(--accent);
-  box-shadow: var(--shadow-sm);
+  color: var(--paper);
+  background: var(--ink);
+  box-shadow: var(--pop-xs);
 }
 
-/* ── Action buttons ── */
+/* ── Action buttons row ── */
 .control-actions {
   display: flex;
   gap: 8px;
 }
 
-/* End session — danger button */
+/* End — cheek-pink pop button */
 .btn-end {
   flex: 1;
   padding: 10px 14px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--danger);
-  background: rgba(232, 90, 90, 0.08);
-  border: 2px solid rgba(232, 90, 90, 0.15);
-  border-radius: var(--radius-sm);
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  background: var(--cheek);
+  border: 2px solid var(--ink);
+  border-radius: 999px;
   cursor: pointer;
-  transition: all 0.2s;
+  box-shadow: var(--pop-sm);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .btn-end:hover {
-  background: rgba(232, 90, 90, 0.14);
-  border-color: rgba(232, 90, 90, 0.3);
-  transform: translateY(-1px);
+  transform: translate(-1px, -1px);
+  box-shadow: var(--pop);
 }
 
-/* Skip commentary — lights up (accent-tinted) only while a persona
-   is mid-utterance; otherwise sits dim and disabled. */
+.btn-end:active {
+  transform: translate(1px, 1px);
+  box-shadow: var(--pop-xs);
+}
+
+/* Skip — yolk pop button when armed; faded paper chip when not */
 .btn-skip {
   flex: 1;
   padding: 10px 14px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--accent);
-  background: var(--accent-soft);
-  border: 2px solid rgba(212, 132, 90, 0.25);
-  border-radius: var(--radius-sm);
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  background: var(--yolk);
+  border: 2px solid var(--ink);
+  border-radius: 999px;
   cursor: pointer;
-  transition: all 0.2s;
+  box-shadow: var(--pop-sm);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 
 .btn-skip:hover:not(:disabled) {
-  background: var(--accent-glow);
-  border-color: var(--accent);
-  transform: translateY(-1px);
+  transform: translate(-1px, -1px);
+  box-shadow: var(--pop);
 }
 
 .btn-skip:active:not(:disabled) {
-  transform: translateY(0) scale(0.98);
+  transform: translate(1px, 1px);
+  box-shadow: var(--pop-xs);
 }
 
 .btn-skip:disabled {
-  opacity: 0.35;
   cursor: not-allowed;
-  color: var(--muted);
-  background: transparent;
-  border-color: var(--edge);
+  color: var(--ink-faint);
+  background: var(--cream-dark);
+  border-color: var(--ink-faint);
+  box-shadow: none;
 }
 
 /* ════════════════════════════════════════════
    Animations
    ════════════════════════════════════════════ */
 
-/* Subtle preview breathing — signals "waiting for the avatar" without a
-   spinner. Gentle brightness pulse reads as alive rather than loading. */
+/* Subtle preview breathing — signals "waiting for the avatar"
+   without a spinner. */
 @keyframes preview-breathe {
-  0%, 100% { filter: brightness(0.85) saturate(0.9); }
-  50%      { filter: brightness(1.0)  saturate(1.05); }
+  0%, 100% { filter: brightness(0.96) saturate(0.95); }
+  50%      { filter: brightness(1.04) saturate(1.05); }
 }
 
-/* Companion frame breathing glow */
+/* Companion frame breathing — a slight pop shadow swell, no glow.
+   Matches the printed-paper aesthetic (no neon halos). */
 @keyframes companion-breathe {
-  0%, 100% {
-    box-shadow:
-      var(--shadow-md),
-      0 0 12px rgba(212, 132, 90, 0.06),
-      inset 0 0 30px rgba(0, 0, 0, 0.3);
-  }
-  50% {
-    box-shadow:
-      var(--shadow-md),
-      0 0 28px rgba(212, 132, 90, 0.14),
-      inset 0 0 20px rgba(0, 0, 0, 0.2);
-  }
+  0%, 100% { box-shadow: var(--pop); }
+  50%      { box-shadow: var(--pop-lg); }
 }
 
 /* Speech bubble entrance — spring overshoot */
@@ -659,7 +653,7 @@ body::before {
     transform: translateY(0) scale(1);
   }
   70% {
-    opacity: 0.8;
+    opacity: 0.85;
   }
   100% {
     opacity: 0;
@@ -667,36 +661,39 @@ body::before {
   }
 }
 
-/* Pulsing glow for connecting/loading states */
-@keyframes pulse-glow {
-  0%, 100% { box-shadow: var(--shadow-md), 0 0 0 0 transparent; }
-  50% { box-shadow: var(--shadow-md), var(--shadow-glow); }
+/* Loading pulse on the primary CTA — pop shadow swells in/out
+   instead of the old glow. */
+@keyframes pulse-pop {
+  0%, 100% { box-shadow: var(--pop); }
+  50%      { box-shadow: var(--pop-lg); }
 }
 
-@keyframes pulse-text {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 0.9; }
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
+/* Reduce motion */
+@media (prefers-reduced-motion: reduce) {
+  .cast-portrait,
+  .avatar-slot.breathing,
+  .avatar-slot .avatar-preview,
+  .btn-primary.loading,
+  .reaction-particle {
+    animation: none !important;
+  }
 }
 
 /* ════════════════════════════════════════════
-   Scrollbar (dark themed)
+   Scrollbar — paper-tinted to match
    ════════════════════════════════════════════ */
-::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: var(--edge);
+  background: var(--ink-faint);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--edge-warm);
+  background: var(--ink-soft);
 }
 
-/* ── Selection ── */
+/* ── Selection — yolk highlight, same as the web site ── */
 ::selection {
-  background: rgba(212, 132, 90, 0.25);
-  color: var(--warm);
+  background: var(--yolk);
+  color: var(--ink);
 }

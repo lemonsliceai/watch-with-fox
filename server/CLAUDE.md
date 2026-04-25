@@ -29,7 +29,6 @@ src/podcast_commentary/
 │   ├── commentary.py      # CommentaryTimer, FullTranscript, timing constants
 │   ├── podcast_pipeline.py # Subscribes to podcast-audio track + Groq STT
 │   ├── speech_gate.py     # Gate logic for "is Fox speaking?"
-│   ├── user_turn.py       # Hold-to-talk state machine with grace timer
 │   ├── prompts.py         # System prompts and context builders
 │   └── angles.py          # 7 comedic angle definitions (Silicon Valley style)
 └── core/          # Shared across api and agent
@@ -39,7 +38,7 @@ src/podcast_commentary/
 
 ## Agent phase state machine
 
-ComedianAgent uses a `FoxPhase` enum: INTRO → LISTENING → COMMENTATING → USER_TALKING → REPLYING. Illegal transitions log errors. Always respect the phase model when modifying agent behavior.
+Each PersonaAgent uses a `FoxPhase` enum: INTRO → LISTENING → COMMENTATING. Illegal transitions log errors. Always respect the phase model when modifying agent behavior.
 
 ## Timing constants (commentary.py)
 

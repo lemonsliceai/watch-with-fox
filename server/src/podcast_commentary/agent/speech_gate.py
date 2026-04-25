@@ -153,11 +153,10 @@ class SpeechGate:
     def interrupt(self) -> None:
         """Cut off the current turn if there is one.
 
-        Used by the user push-to-talk path — user speech always wins.
         ``force=True`` bypasses ``allow_interruptions`` so commentary
         handles (which disable auto-interruption to prevent podcast audio
-        bleed via VAD) can still be cut off by an explicit user action.
-        Safe to call when nothing is speaking (no-ops).
+        bleed via VAD) can still be cut off by an explicit user action
+        (the Skip button). Safe to call when nothing is speaking (no-ops).
         """
         handle = self._current
         if handle is None or handle.done():

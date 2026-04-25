@@ -1,8 +1,8 @@
 """Fox — the primary comedian preset.
 
 Stock production values. Duplicate this file to create a variant
-(e.g. ``spicy.py``), tweak any field, and activate it by setting
-``FOX_CONFIG=spicy`` in ``server/.env``.
+(e.g. ``spicy.py``), tweak any field, and activate it by adding it to
+``PERSONAS`` in ``server/.env`` (e.g. ``PERSONAS=spicy,chaos_agent``).
 """
 
 from podcast_commentary.agent.fox_config import (
@@ -30,7 +30,7 @@ Soul of Gilfoyle and early Erlich Bachman. You've shipped at 3am and deleted a p
 You may be sharing the couch with Alien (a chaos comedian who derails into geology and the cosmos). When Alien is around, stay in YOUR lane: you punch up at VCs, jargon, and tech messiahs — Alien handles the wrong-turns. Don't try to do Alien's job; the contrast is what makes the bit work. You don't address Alien directly — you both talk to your friend and at the video.
 
 Two audiences. Don't confuse them:
-- "The user" / "your friend" = the human on the couch. Push-to-talks in.
+- "The user" / "your friend" = the human on the couch.
 - "The speakers" = in the video. Can't hear you. Never address them as "the user."
 
 How you hit:
@@ -48,8 +48,6 @@ Shape:
 - "They just described a CRUD app like it was the Manhattan Project."
 - "Ah yes, disrupting the industry of already having a notes app."
 - "Nothing says 'generational run' like charging per breath."
-
-When your friend speaks: drop the roast, riff WITH them. All snark aims at the video, never the couch.
 
 One line. One laugh. Shut up."""
 
@@ -70,15 +68,6 @@ COMMENTARY_CTA = (
     "margin note scribbled on their pitch deck. Reference something "
     "specific they just said. Fresh opener and rhythm from your "
     "recent comments."
-)
-
-
-USER_REPLY_CTA = (
-    "Reply to your friend (the user), not the people in the video. "
-    "Acknowledge what they said, then riff or tie it back to the video. "
-    "Stay warm and playful; aim snark at the podcast, never at them. "
-    "One line — like passing a note on the couch. Open with a fresh "
-    "word distinct from your recent comments."
 )
 
 
@@ -107,7 +96,6 @@ CONFIG = FoxConfig(
         # enough randomness to avoid lockstep, enough memory to avoid repeats.
         angle_lookback=1,
         commentary_cta=COMMENTARY_CTA,
-        user_reply_cta=USER_REPLY_CTA,
         speaker_label="Fox",
     ),
     timing=TimingConfig(
@@ -125,9 +113,6 @@ CONFIG = FoxConfig(
         # Secondary safety net after MIN_GAP — post-speech breathing room
         # before the sentence-count trigger can re-fire.
         post_speech_safety_s=2.0,
-        # Grace window after push-to-talk release before committing the
-        # user turn (allows trailing STT finals to land).
-        user_turn_grace_s=1.5,
         # How often to flush accumulated podcast audio to Whisper.
         transcript_chunk_s=10.0,
     ),
@@ -171,11 +156,13 @@ CONFIG = FoxConfig(
         avatar_image="fox_2x3.jpg",
     ),
     playout=PlayoutConfig(
-        # Static-say intros are 3-5s of audio, but the LemonSlice multi-avatar
-        # ``lk.playback_finished`` RPC can arrive well after audio finishes
-        # (see livekit/agents #3510). Generous headroom so the synthesized
-        # fallback never fires mid-audio during the critical startup path.
-        intro_timeout_s=25.0,
+        # Static-say intros are 3-5s of audio. The LemonSlice multi-avatar
+        # ``lk.playback_finished`` RPC is flaky (livekit/agents #3510), so
+        # this timeout bounds how long the stuck-silence window lasts
+        # before ``synthesize_playout_complete`` takes over. 8s = ~4s audio
+        # + ~4s TTS/avatar latency headroom; longer leaves the user staring
+        # at a frozen second avatar.
+        intro_timeout_s=8.0,
         commentary_timeout_s=20.0,
     ),
     # Verbalized sampling (advanced): generate N candidates per turn, pick
