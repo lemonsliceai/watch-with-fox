@@ -7,13 +7,28 @@
  * stops. Designed to work on any streaming site, not just YouTube.
  */
 
-(function () {
-  "use strict";
+(() => {
+  // Guard against double-injection. The side panel programmatically
+  // injects this script via chrome.scripting when it can't find a content
+  // script already running (e.g. tabs opened before the extension loaded).
+  // If the manifest match also fired, we'd start two parallel observers
+  // and double-fire every state-update message. The window flag is the
+  // canonical idempotency primitive for content scripts.
+  if (window.__couchverseContentInjected) return;
+  window.__couchverseContentInjected = true;
 
+  const MEDIA_EVENTS = ["play", "pause", "seeked", "ended"];
   let media = null;
   let bodyObserver = null;
   let urlObserver = null;
   let lastUrl = location.href;
+
+  function bindMediaEvents(el) {
+    for (const evt of MEDIA_EVENTS) el.addEventListener(evt, sendStateUpdate);
+  }
+  function unbindMediaEvents(el) {
+    for (const evt of MEDIA_EVENTS) el.removeEventListener(evt, sendStateUpdate);
+  }
 
   function init() {
     findMedia();
@@ -60,15 +75,9 @@
 
   function attachListeners() {
     if (!media) return;
-
-    media.addEventListener("play", sendStateUpdate);
-    media.addEventListener("pause", sendStateUpdate);
-    media.addEventListener("seeked", sendStateUpdate);
-    media.addEventListener("ended", sendStateUpdate);
-
+    bindMediaEvents(media);
     sendVideoInfo();
     sendStateUpdate();
-
     startUrlObserver();
   }
 
@@ -88,16 +97,8 @@
     const previous = media;
     findMedia();
     if (media && media !== previous) {
-      if (previous) {
-        previous.removeEventListener("play", sendStateUpdate);
-        previous.removeEventListener("pause", sendStateUpdate);
-        previous.removeEventListener("seeked", sendStateUpdate);
-        previous.removeEventListener("ended", sendStateUpdate);
-      }
-      media.addEventListener("play", sendStateUpdate);
-      media.addEventListener("pause", sendStateUpdate);
-      media.addEventListener("seeked", sendStateUpdate);
-      media.addEventListener("ended", sendStateUpdate);
+      if (previous) unbindMediaEvents(previous);
+      bindMediaEvents(media);
     }
     sendVideoInfo();
     sendStateUpdate();
@@ -115,19 +116,21 @@
 
   function sendStateUpdate() {
     if (!media) {
-      chrome.runtime.sendMessage({
-        type: "media-state-update",
-        playing: false,
-        time: 0,
-        duration: 0,
-      }).catch(() => {});
+      chrome.runtime
+        .sendMessage({
+          type: "media-state-update",
+          playing: false,
+          time: 0,
+          duration: 0,
+        })
+        .catch(() => {});
       return;
     }
     const msg = {
       type: "media-state-update",
       playing: !media.paused && !media.ended,
       time: media.currentTime || 0,
-      duration: isFinite(media.duration) ? media.duration : 0,
+      duration: Number.isFinite(media.duration) ? media.duration : 0,
     };
     chrome.runtime.sendMessage(msg).catch(() => {});
   }
@@ -137,13 +140,13 @@
     // back to document.title catches everything else — most sites surface
     // the media title in <title> already.
     const ytWatch = document.querySelector(
-      "#above-the-fold h1.ytd-watch-metadata yt-formatted-string"
+      "#above-the-fold h1.ytd-watch-metadata yt-formatted-string",
     );
     if (ytWatch) return ytWatch.textContent.trim();
 
     const ytShortsTitle = document.querySelector(
       "ytd-reel-video-renderer[is-active] yt-shorts-video-title-view-model, " +
-      "ytd-reel-video-renderer[is-active] h2"
+        "ytd-reel-video-renderer[is-active] h2",
     );
     if (ytShortsTitle) return ytShortsTitle.textContent.trim();
 
@@ -179,11 +182,21 @@
           type: "media-state-update",
           playing: !media.paused && !media.ended,
           time: media.currentTime || 0,
-          duration: isFinite(media.duration) ? media.duration : 0,
+          duration: Number.isFinite(media.duration) ? media.duration : 0,
         });
       }
       return false;
     }
+  });
+
+  // Tear observers down on page unload. SPA navigations stay within the
+  // same content-script instance, but a hard navigation / tab close can
+  // race observer callbacks with the dying document — disconnecting
+  // explicitly avoids the "operation on detached document" warnings.
+  window.addEventListener("pagehide", () => {
+    bodyObserver?.disconnect();
+    urlObserver?.disconnect();
+    if (media) unbindMediaEvents(media);
   });
 
   if (document.readyState === "loading") {

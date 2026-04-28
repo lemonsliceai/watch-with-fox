@@ -1,15 +1,21 @@
 {
   "name": "couchverse-extension",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "description": "Chrome extension for Couchverse",
   "scripts": {
     "build": "node build.js",
     "watch": "node build.js --watch",
+    "lint": "npx --yes @biomejs/biome@1.9.4 check src background.js content.js build.js",
+    "lint:fix": "npx --yes @biomejs/biome@1.9.4 check --write src background.js content.js build.js",
+    "format": "npx --yes @biomejs/biome@1.9.4 format --write src background.js content.js build.js",
     "package": "npm run build && rm -f ../couchverse-extension.zip && zip -r ../couchverse-extension.zip manifest.json background.js content.js sidepanel.html styles.css dist icons"
   },
   "dependencies": {
     "esbuild": "^0.25.0",
     "livekit-client": "^2.18.2"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4"
   }
 }

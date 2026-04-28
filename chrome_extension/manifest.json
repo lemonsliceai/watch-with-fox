@@ -8,7 +8,6 @@
     "activeTab",
     "scripting",
     "sidePanel",
-    "storage",
     "tabs"
   ],
   "host_permissions": [
@@ -16,6 +15,9 @@
   ],
   "side_panel": {
     "default_path": "sidepanel.html"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
   },
   "background": {
     "service_worker": "background.js"

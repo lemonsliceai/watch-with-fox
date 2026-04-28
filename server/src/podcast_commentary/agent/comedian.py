@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import enum
+import json
 import logging
 import random
 import re
@@ -29,6 +30,7 @@ from collections.abc import AsyncIterable, Awaitable, Callable
 from typing import Any
 
 from livekit.agents import Agent, ModelSettings, llm
+from livekit.plugins import groq
 
 from podcast_commentary.agent.fox_config import FoxConfig
 from podcast_commentary.agent.prompts import (
@@ -157,12 +159,11 @@ def _parse_json_fallback(payload: str) -> list[tuple[float, str]]:
     return out
 
 
-def _select_candidate(raw: str, strategy: str) -> str:
-    """Pick one candidate line from the verbalized-sampling response.
+def _parse_candidates(raw: str) -> list[tuple[float, str]]:
+    """Parse a verbalized-sampling response into ``(probability, line)`` tuples.
 
-    Never returns the raw model output: on total parse failure we return
-    ``""`` so the caller pipes silence to TTS instead of making the avatar
-    recite the format envelope out loud (the 80-second JSON-soliloquy bug).
+    Tries the line-delimited format first, falls back to JSON-ish recovery.
+    Returns ``[]`` when nothing parses — caller decides what silence means.
     """
     payload = raw.strip()
     if payload.startswith("```"):
@@ -174,11 +175,25 @@ def _select_candidate(raw: str, strategy: str) -> str:
     candidates = _parse_line_delimited(payload)
     if not candidates:
         candidates = _parse_json_fallback(payload)
+    return candidates
 
+
+def _select_candidate(raw: str, strategy: str) -> str:
+    """Pick one candidate line synchronously (max_prob / top_k_random).
+
+    For ``"judge"`` selection see ``PersonaAgent._judge_select`` — that path
+    needs an LLM round-trip and lives on the agent so it can reuse the
+    persona's history and the chat context for transcript anchoring.
+
+    Never returns the raw model output: on total parse failure we return
+    ``""`` so the caller pipes silence to TTS instead of making the avatar
+    recite the format envelope out loud (the 80-second JSON-soliloquy bug).
+    """
+    candidates = _parse_candidates(raw)
     if not candidates:
         logger.warning(
             "VS parse recovered 0 candidates — dropping turn (preview=%r)",
-            payload[:200],
+            raw[:200],
         )
         return ""
 
@@ -196,6 +211,72 @@ def _select_candidate(raw: str, strategy: str) -> str:
         line[:120],
     )
     return line
+
+
+# ---------------------------------------------------------------------------
+# Judge selection — second LLM round-trip that reranks the parsed candidates
+# against a 3-axis rubric (anchor / fresh / snap). Lives at module scope so
+# the prompt is grep-able alongside the persona prompts; the LLM client and
+# context-extraction are on PersonaAgent because they need per-persona state.
+# ---------------------------------------------------------------------------
+
+
+_JUDGE_SYSTEM = (
+    "You are the comedy judge for Couchverse — a show where AI comedians "
+    "riff on whatever audio the user is playing. Your only job is to pick "
+    "the FUNNIEST candidate line.\n\n"
+    "Score each candidate 1-5 on three axes; pick the highest TOTAL:\n"
+    "- ANCHOR: does it latch onto a SPECIFIC word, name, number, or claim "
+    "from the transcript? Generic line that could land on any clip = 1. "
+    "Sharp specific reference = 5.\n"
+    "- FRESH: does it use a different opener, shape, and joke structure "
+    "than the persona's recent lines? Repeat shape = 1. New beat = 5.\n"
+    "- SNAP: does the surprise land on the LAST word? Predictable last "
+    "beat = 1. Last-word twist = 5.\n\n"
+    'Reply with strict JSON only: {"winner": <1-N>, "reason": "<short>"}. '
+    "No prose, no markdown, no extra keys."
+)
+
+
+# Match the [LATEST TRANSCRIPT — ...] block emitted by ``prompts.py`` so the
+# judge can score the ANCHOR axis against the same text the model saw.
+_TRANSCRIPT_BLOCK_RE = re.compile(
+    r"\[LATEST TRANSCRIPT[^\]]*\]\n(.*?)(?=\n\n\[|\Z)",
+    re.DOTALL,
+)
+
+
+def _extract_transcript_block(chat_ctx: llm.ChatContext) -> str:
+    """Pull the LATEST TRANSCRIPT block out of the most recent user message."""
+    for item in reversed(chat_ctx.items):
+        if not isinstance(item, llm.ChatMessage) or item.role != "user":
+            continue
+        text = item.text_content or ""
+        m = _TRANSCRIPT_BLOCK_RE.search(text)
+        if m:
+            return m.group(1).strip()
+    return ""
+
+
+def _parse_judge_winner(raw: str, n_candidates: int) -> int:
+    """Parse the judge's JSON reply into a 0-based index, or ``-1`` on failure."""
+    payload = raw.strip()
+    if payload.startswith("```"):
+        payload = payload.strip("`")
+        if payload.lower().startswith("json"):
+            payload = payload[4:]
+        payload = payload.strip()
+    try:
+        data = json.loads(payload)
+        winner = int(data.get("winner", 0))
+    except (json.JSONDecodeError, ValueError, TypeError):
+        logger.warning("Judge LLM produced invalid JSON: %r", raw[:120])
+        return -1
+    idx = winner - 1
+    if 0 <= idx < n_candidates:
+        return idx
+    logger.warning("Judge LLM picked out-of-range winner=%d (of %d)", winner, n_candidates)
+    return -1
 
 
 class FoxPhase(enum.Enum):
@@ -248,6 +329,9 @@ class PersonaAgent(Agent):
         # UI-driven reply-length preference — "short" | "long" | None (normal).
         # Director sets this from the extension's settings message.
         self._length_hint: str | None = None
+        # Lazy-built when ``sampling.selection == "judge"`` — second Groq
+        # client used for the rerank round-trip. None until first use.
+        self._judge_llm: groq.LLM | None = None
 
         # Set by ``on_enter`` so the Director can wait for both personas to
         # finish initial composition before delivering the coordinated intro.
@@ -310,8 +394,88 @@ class PersonaAgent(Agent):
                 buf.append(text)
         raw = "".join(buf)
 
-        winner = _select_candidate(raw, self._config.sampling.selection)
+        if self._config.sampling.selection == "judge":
+            winner = await self._judge_select(raw, chat_ctx)
+        else:
+            winner = _select_candidate(raw, self._config.sampling.selection)
         yield winner
+
+    # ------------------------------------------------------------------
+    # Judge selection — async because it needs an LLM round-trip.
+    # ------------------------------------------------------------------
+    async def _judge_select(self, raw: str, chat_ctx: llm.ChatContext) -> str:
+        """Rerank candidates with the judge LLM; fall back to max_prob on failure."""
+        candidates = _parse_candidates(raw)
+        if not candidates:
+            logger.warning(
+                "VS parse recovered 0 candidates — dropping turn (preview=%r)",
+                raw[:200],
+            )
+            return ""
+        if len(candidates) == 1:
+            return candidates[0][1]
+
+        transcript = _extract_transcript_block(chat_ctx)
+        idx = -1
+        try:
+            idx = await asyncio.wait_for(
+                self._judge_pick(candidates, transcript=transcript),
+                timeout=self._config.sampling.judge_timeout_s,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("Judge LLM timed out — falling back to max_prob")
+        except Exception:
+            logger.warning("Judge LLM raised — falling back to max_prob", exc_info=True)
+
+        if 0 <= idx < len(candidates):
+            p, line = candidates[idx]
+            logger.info(
+                "Judge picked candidate %d (p=%.2f, of %d): %s",
+                idx + 1,
+                p,
+                len(candidates),
+                line[:120],
+            )
+            return line
+
+        p, line = max(candidates, key=lambda c: c[0])
+        logger.info("Judge fallback (max_prob, p=%.2f, of %d): %s", p, len(candidates), line[:120])
+        return line
+
+    async def _judge_pick(self, candidates: list[tuple[float, str]], *, transcript: str) -> int:
+        """Ask the judge LLM which candidate to ship. Returns 0-based index."""
+        cand_block = "\n".join(f"[{i + 1}] {line}" for i, (_, line) in enumerate(candidates))
+        recent = (
+            "\n".join(f"- {c}" for c in self._commentary_history[-5:])
+            if self._commentary_history
+            else "(none yet)"
+        )
+        user_prompt = (
+            f"PERSONA: {self.label}\n\n"
+            f"LATEST TRANSCRIPT:\n{transcript or '(silent)'}\n\n"
+            f"PERSONA'S RECENT LINES (avoid these shapes):\n{recent}\n\n"
+            f"CANDIDATES:\n{cand_block}\n\n"
+            'Reply strict JSON: {"winner": <1-N>, "reason": "<short>"}.'
+        )
+        chat_ctx = llm.ChatContext.empty()
+        chat_ctx.add_message(role="system", content=_JUDGE_SYSTEM)
+        chat_ctx.add_message(role="user", content=user_prompt)
+
+        judge = self._ensure_judge_llm()
+        buf: list[str] = []
+        async with judge.chat(chat_ctx=chat_ctx) as stream:
+            async for chunk in stream:
+                if chunk.delta and chunk.delta.content:
+                    buf.append(chunk.delta.content)
+        return _parse_judge_winner("".join(buf), len(candidates))
+
+    def _ensure_judge_llm(self) -> groq.LLM:
+        if self._judge_llm is None:
+            self._judge_llm = groq.LLM(
+                model=self._config.sampling.judge_model,
+                max_completion_tokens=80,
+            )
+        return self._judge_llm
 
     # ==================================================================
     # Lifecycle

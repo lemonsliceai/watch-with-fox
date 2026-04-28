@@ -17,15 +17,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     ended_at TIMESTAMPTZ
 );
 
-CREATE TABLE IF NOT EXISTS commentary_logs (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id UUID REFERENCES sessions(id),
-    timestamp_ms INTEGER NOT NULL,
-    transcript_context TEXT,
-    commentary TEXT NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT now()
-);
-
 CREATE TABLE IF NOT EXISTS conversation_messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     session_id UUID REFERENCES sessions(id) ON DELETE CASCADE,

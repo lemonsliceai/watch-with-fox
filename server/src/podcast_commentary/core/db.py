@@ -69,21 +69,9 @@ async def run_migrations() -> None:
                 video_title TEXT,
                 room_name TEXT NOT NULL UNIQUE,
                 status TEXT DEFAULT 'created',
+                summary TEXT,
                 created_at TIMESTAMPTZ DEFAULT now(),
                 ended_at TIMESTAMPTZ
-            )
-        """)
-        await conn.execute("""
-            ALTER TABLE sessions ADD COLUMN IF NOT EXISTS summary TEXT
-        """)
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS commentary_logs (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                session_id UUID REFERENCES sessions(id),
-                timestamp_ms INTEGER NOT NULL,
-                transcript_context TEXT,
-                commentary TEXT NOT NULL,
-                created_at TIMESTAMPTZ DEFAULT now()
             )
         """)
         # Unified conversation log: every utterance by every speaker in the
@@ -104,6 +92,8 @@ async def run_migrations() -> None:
             CREATE INDEX IF NOT EXISTS idx_conversation_messages_session
             ON conversation_messages(session_id, created_at)
         """)
+        # Drop legacy unused table from earlier schema iterations.
+        await conn.execute("DROP TABLE IF EXISTS commentary_logs")
     logger.info("Migrations complete")
 
 
@@ -140,23 +130,6 @@ async def end_session(session_id: str) -> None:
         await conn.execute(
             "UPDATE sessions SET status = 'ended', ended_at = now() WHERE id = $1",
             session_id,
-        )
-
-
-async def log_commentary(
-    session_id: str, timestamp_ms: int, transcript_context: str, commentary: str
-) -> None:
-    pool = await _get_pool()
-    async with pool.acquire() as conn:
-        await conn.execute(
-            """
-            INSERT INTO commentary_logs (session_id, timestamp_ms, transcript_context, commentary)
-            VALUES ($1, $2, $3, $4)
-            """,
-            session_id,
-            timestamp_ms,
-            transcript_context,
-            commentary,
         )
 
 

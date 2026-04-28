@@ -31,6 +31,9 @@
         <button id="start-btn" class="btn-primary" disabled>
           Start Couchverse
         </button>
+        <a class="attribution" href="https://lemonslice.com" target="_blank" rel="noopener noreferrer">
+          Avatars by <strong>LemonSlice</strong>
+        </a>
         <p id="setup-error" class="error hidden"></p>
       </div>
     </div>
@@ -116,9 +119,9 @@
     </div>
 
     <!-- Hidden audio-element sink. Each persona's remote audio track is
-         attached here (volume=0) purely to keep Chrome's WebRTC pipeline
+         attached here (muted) purely to keep Chrome's WebRTC pipeline
          pulling RTP samples — the audible path is the WebAudio graph
-         built from the same MediaStreamTrack in sidepanel.js. -->
+         built from the same MediaStreamTrack in src/audio/audio-graph.js. -->
     <div id="audio-container" class="hidden"></div>
   </div>
 

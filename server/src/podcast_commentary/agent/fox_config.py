@@ -154,7 +154,19 @@ class SamplingConfig:
     # ``max_prob``: always ship the highest-confidence candidate.
     # ``top_k_random``: uniform-random pick from top-3 — adds variance,
     # fits personas where predictability is off-brand (e.g. chaos).
-    selection: Literal["max_prob", "top_k_random"] = "max_prob"
+    # ``judge``: rerank with a second LLM call against a 3-axis rubric
+    # (anchor / fresh / snap). Adds ~1-2s latency for one extra round-trip
+    # but fights RLHF mode-collapse on humor better than self-rated
+    # confidence — the model knows what's "likely," not what's "funny."
+    # On timeout/error, falls back to max_prob.
+    selection: Literal["max_prob", "top_k_random", "judge"] = "max_prob"
+    # Judge LLM model (Groq). Same default as the comedians — could be
+    # swapped for a smaller fast model. Only consulted when ``selection``
+    # is ``"judge"``.
+    judge_model: str = "llama-3.3-70b-versatile"
+    # Hard cap on the judge round-trip. Miss this and we ship the
+    # max_prob pick instead — better a slightly-wrong line than dead air.
+    judge_timeout_s: float = 2.5
 
 
 @dataclass(frozen=True)
