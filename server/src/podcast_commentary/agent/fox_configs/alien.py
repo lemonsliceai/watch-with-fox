@@ -107,7 +107,7 @@ CONFIG = FoxConfig(
         angle_lookback=1,
         commentary_cta=COMMENTARY_CTA,
         speaker_label="Alien",
-        descriptor="Sniper one-liners",
+        descriptor="Sniper",
         preview_filename="alien_2x3.jpg",
     ),
     timing=TimingConfig(

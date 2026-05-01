@@ -48,10 +48,12 @@ class Settings(BaseSettings):
     # self-joins the rest as secondaries) and its timing values drive
     # shared cadence. Reorder this list to change the primary.
     #
-    # When empty, every preset module in ``fox_configs/`` is
-    # auto-discovered (sorted) and the alphabetically-first becomes
-    # primary — set this explicitly to control order or trim the lineup.
-    PERSONAS: str = ""
+    # The shipping default is ``alien,cat_girl``. Other presets in
+    # ``fox_configs/`` (e.g. ``david_sacks``) are opt-in experiments —
+    # add them here to play with them, but they are not part of the
+    # canonical lineup. When empty, every preset module is auto-discovered
+    # (sorted) — useful for local dev when poking at a new preset.
+    PERSONAS: str = "alien,cat_girl"
 
     # Speaker-selection LLM (Director judge). Cheap + fast wins here — we
     # only need a JSON pick, not creative writing. Same Groq model as the

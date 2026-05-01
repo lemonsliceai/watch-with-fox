@@ -2,7 +2,7 @@
 
 # Couchverse — Chrome Extension
 
-Chrome MV3 extension that adds two AI co-hosts — **Cat girl** and **Alien** — to a side panel while you watch or listen in the browser.
+Chrome MV3 extension that adds two AI co-hosts — **Alien** and **Cat girl** — to a side panel while you watch or listen in the browser.
 
 [![Chrome 116+](https://img.shields.io/badge/Chrome-116%2B-4285F4?logo=googlechrome&logoColor=white)](https://developer.chrome.com/docs/extensions/mv3/intro/)
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-34A853)](https://developer.chrome.com/docs/extensions/mv3/intro/)
@@ -147,7 +147,7 @@ curl http://localhost:8080/health
 2. Click the Couchverse icon. The side panel opens.
 3. The extension auto-detects the tab's URL and title.
 4. Click **Start Couchverse**.
-5. Cat girl and Alien appear and start reacting.
+5. Alien and Cat girl appear and start reacting.
 6. Adjust volume sliders as needed.
 
 ## Configuring the API URL

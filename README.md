@@ -4,7 +4,7 @@
 
 ### Live AI commentary on whatever you're tuned into.
 
-Two AI co-hosts, **Cat girl** and **Alien**, react in real time to any audio playing in your browser tab. Think MST3K, except the hecklers live in your Chrome side panel and they'll cover a podcast or a TikTok feed as happily as a movie.
+Two AI co-hosts, **Alien** and **Cat girl**, react in real time to any audio playing in your browser tab. Think MST3K, except the hecklers live in your Chrome side panel and they'll cover a podcast or a TikTok feed as happily as a movie.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Chrome MV3](https://img.shields.io/badge/Chrome-MV3-4285F4?logo=googlechrome&logoColor=white)](chrome_extension/)
@@ -15,7 +15,7 @@ Two AI co-hosts, **Cat girl** and **Alien**, react in real time to any audio pla
 
 **[Quick start](#quick-start)** · **[Architecture](#architecture)** · **[The hosts](#the-hosts)** · **[Contributing](CONTRIBUTING.md)** · **[Security](SECURITY.md)**
 
-<img src="docs/screenshot.png" alt="Couchverse side panel with Cat girl and Alien reacting to a tab" width="820" />
+<img src="docs/screenshot.png" alt="Couchverse side panel with Alien and Cat girl reacting to a tab" width="820" />
 
 </div>
 
@@ -33,7 +33,7 @@ The hosts don't know or care what site the audio came from. They only hear it.
 ## Highlights
 
 - **Zero server-side audio extraction.** The extension captures the tab with `chrome.tabCapture` and publishes it to LiveKit. The agent subscribes to the track. No scraping, no per-site hacks.
-- **Two personas out of the box.** Cat girl (the moody emo deadpan) and Alien (the sniper one-liner machine) share one `FoxConfig` schema, so swapping or adding personalities is a single file drop.
+- **Two personas out of the box.** Alien (the sniper one-liner machine) and Cat girl (the moody emo deadpan) share one `FoxConfig` schema, so swapping or adding personalities is a single file drop.
 - **Optional persistence.** Plug in Neon PostgreSQL to log conversations, or leave `DATABASE_URL` blank and run ephemerally.
 - **Portable.** Frontend runs anywhere Chrome does; the server runs locally with `uv` or on Fly.io with two processes.
 
@@ -111,16 +111,16 @@ uv run python src/podcast_commentary/agent/main.py dev
 <tr>
 <td width="50%" valign="top">
 
-### Cat girl — the emo deadpan
+### Alien — the sniper
 
-Moody, slightly sarcastic riffs in a flat voice — secretly attentive and protective once someone's honest with you. The stock primary when you don't configure anything.
+Dry one-liner machine — anchors on a specific thing the speakers just said and snaps it shut. The stock primary when you don't configure anything.
 
 </td>
 <td width="50%" valign="top">
 
-### Alien — the sniper
+### Cat girl — the emo deadpan
 
-Cat girl's foil. Dry one-liner machine — anchors on a specific thing the speakers just said and snaps it shut.
+Alien's foil. Moody, slightly sarcastic riffs in a flat voice — secretly attentive and protective once someone's honest with you.
 
 </td>
 </tr>

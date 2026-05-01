@@ -2,12 +2,13 @@
   "manifest_version": 3,
   "name": "Couchverse: Live AI Commentary",
   "version": "1.1.0",
-  "description": "Cat girl and Alien are your AI co-hosts, reacting in real time to whatever is playing in your browser tab.",
+  "description": "Alien and Cat girl are your AI co-hosts, reacting in real time to whatever is playing in your browser tab.",
   "permissions": [
     "tabCapture",
     "activeTab",
     "scripting",
     "sidePanel",
+    "storage",
     "tabs"
   ],
   "host_permissions": [

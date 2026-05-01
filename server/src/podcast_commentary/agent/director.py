@@ -53,15 +53,20 @@ from podcast_commentary.agent.selector import SpeakerSelector
 from podcast_commentary.agent.settings_controller import SettingsController
 from podcast_commentary.agent.skip_coordinator import SkipCoordinator
 from podcast_commentary.agent.task_supervisor import TaskSupervisor
+from podcast_commentary.agent.user_presence import (
+    _AVATAR_IDENTITY_PREFIX,
+    UserPresenceMonitor,
+)
 from podcast_commentary.core.config import settings
 from podcast_commentary.core.db import log_conversation_message
 
 logger = logging.getLogger("podcast-commentary.director")
 
 
-# Avatar participants publish under this identity prefix (see main.py
-# ``_avatar_identity_for``). Anything else disconnecting is the user.
-_AVATAR_IDENTITY_PREFIX = "lemonslice-avatar-"
+# Re-exported so tests that patch ``director_module._AVATAR_IDENTITY_PREFIX``
+# keep working without reaching into ``user_presence``.
+__all_constants__ = (_AVATAR_IDENTITY_PREFIX,)
+
 
 # Hard timeout for the heartbeat watchdog. If the user is missing
 # from every room for this many seconds, the Director force-trips the
@@ -72,6 +77,8 @@ _DEFAULT_USER_HEARTBEAT_TIMEOUT_S = 30.0
 # How often the watchdog polls room membership. The check is cheap (just
 # iterating ``remote_participants``) so 1 s is fine and keeps the worst
 # case for trip detection at ``timeout + poll`` ≈ 31 s.
+# Read at each poll iteration via a provider so tests can monkeypatch this
+# module attribute after the monitor is constructed.
 _HEARTBEAT_POLL_INTERVAL_S = 1.0
 
 
@@ -234,10 +241,18 @@ class Director:
         self.session_shutdown: asyncio.Event = asyncio.Event()
         self._secondary_connectors: list[SecondaryRoomConnector] = list(secondary_connectors or [])
         self._user_heartbeat_timeout_s = user_heartbeat_timeout_s
-        # Initialised to "now" at start() so the watchdog has a full
-        # ``user_heartbeat_timeout_s`` of grace before the first trip
-        # decision, regardless of when the user actually shows up.
-        self._last_user_seen: float = time.monotonic()
+        # Owns the polling loop, the last-seen clock, and the
+        # user-vs-avatar discrimination. The provider closure reads
+        # ``_HEARTBEAT_POLL_INTERVAL_S`` from THIS module so test
+        # monkeypatches against ``director_module._HEARTBEAT_POLL_INTERVAL_S``
+        # take effect on every iteration.
+        self._presence = UserPresenceMonitor(
+            rooms_provider=lambda: (ctx.room for ctx in self._contexts),
+            timeout_s=user_heartbeat_timeout_s,
+            on_timeout=self._on_user_heartbeat_timeout,
+            stop_event=self.session_shutdown,
+            poll_interval_provider=lambda: _HEARTBEAT_POLL_INTERVAL_S,
+        )
 
         # ----- session-lifecycle log state ------------------------------
         # ``_avatar_startup_ms`` is a live reference handed in by the
@@ -301,7 +316,7 @@ class Director:
         # finished ``ctx.connect()`` so any present user is visible in
         # ``remote_participants``. Earlier timestamps from __init__ are
         # stale by however long avatar startup took.
-        self._last_user_seen = time.monotonic()
+        self._presence.last_user_seen = time.monotonic()
         self._session_started_at = time.monotonic()
         self._tasks.fire_and_forget(self._heartbeat_watchdog(), name="director_heartbeat_watchdog")
 
@@ -620,57 +635,33 @@ class Director:
                     await self._on_user_disconnect()
 
     async def _heartbeat_watchdog(self) -> None:
-        """30-s safety net: force-trip the latch if the user is missing.
+        """Drive the UserPresenceMonitor until it trips or shutdown completes.
 
-        A clean ``participant_disconnected`` is the happy path. The unhappy
-        path is the user's tab being killed without a clean disconnect
-        signal — the SDK eventually times the participant out, but in the
-        meantime the show would keep running into a dead room. This
-        watchdog polls ``remote_participants`` across every room and
-        force-trips the latch once the user has been absent for the full
-        ``_user_heartbeat_timeout_s`` window.
+        Kept on Director (rather than calling the monitor directly) so
+        ``ctx.add_shutdown_callback`` paths and tests have a stable
+        method on the Director surface to spawn the watchdog from.
         """
-        while not self.session_shutdown.is_set():
-            if self._user_present_in_any_room():
-                self._last_user_seen = time.monotonic()
-            elif time.monotonic() - self._last_user_seen >= self._user_heartbeat_timeout_s:
-                logger.warning(
-                    "User heartbeat missing for %.0fs across all rooms — "
-                    "force-tripping shutdown latch",
-                    self._user_heartbeat_timeout_s,
-                )
-                if self._end_reason is None:
-                    self._end_reason = "timeout"
-                self._trip_shutdown_latch()
-                return
-            try:
-                await asyncio.wait_for(
-                    self.session_shutdown.wait(),
-                    timeout=_HEARTBEAT_POLL_INTERVAL_S,
-                )
-            except asyncio.TimeoutError:
-                continue
+        await self._presence.run()
+
+    def _on_user_heartbeat_timeout(self) -> None:
+        """Monitor callback: user was absent past the timeout window."""
+        if self._end_reason is None:
+            self._end_reason = "timeout"
+        self._trip_shutdown_latch()
+
+    # ``_last_user_seen`` and ``_user_present_in_any_room`` are kept as
+    # delegations for tests that drive the watchdog directly: they reset
+    # the clock or assert presence at specific moments.
+    @property
+    def _last_user_seen(self) -> float:
+        return self._presence.last_user_seen
+
+    @_last_user_seen.setter
+    def _last_user_seen(self, value: float) -> None:
+        self._presence.last_user_seen = value
 
     def _user_present_in_any_room(self) -> bool:
-        """True iff at least one non-avatar remote participant is live.
-
-        ``remote_participants`` excludes the agent's own ``local_participant``,
-        so the only non-avatar identities here are real users. Iterating
-        every room (not just the primary) is cheap and keeps the heartbeat
-        clock honest if the user ever ends up in a non-primary room.
-        """
-        seen_rooms: set[int] = set()
-        for ctx in self._contexts:
-            room = ctx.room
-            if id(room) in seen_rooms:
-                continue
-            seen_rooms.add(id(room))
-            participants = getattr(room, "remote_participants", None) or {}
-            for participant in participants.values():
-                identity = getattr(participant, "identity", "") or ""
-                if identity and not identity.startswith(_AVATAR_IDENTITY_PREFIX):
-                    return True
-        return False
+        return self._presence.is_user_present()
 
     # ==================================================================
     # Inbound control handlers

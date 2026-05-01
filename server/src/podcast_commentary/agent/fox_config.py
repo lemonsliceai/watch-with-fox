@@ -250,9 +250,11 @@ def _discover_preset_names() -> list[str]:
 def _resolve_persona_names() -> list[str]:
     """Return the persona names to load, in order.
 
-    ``PERSONAS`` (comma-separated) wins when set. Otherwise fall back to
-    every preset in ``fox_configs/``, sorted, so adding a preset file is
-    enough to activate it during local dev.
+    ``PERSONAS`` (comma-separated) wins when set. The shipping default is
+    ``alien,cat_girl`` (set in ``settings.PERSONAS``); other presets in
+    ``fox_configs/`` are opt-in experiments. If the value is explicitly
+    cleared, fall back to every preset in ``fox_configs/`` sorted — handy
+    for local dev when poking at a new preset.
     """
     raw = (settings.PERSONAS or "").strip()
     if raw:

@@ -171,7 +171,7 @@ CONFIG = FoxConfig(
         #   QIhD5ivPGEoYZQDocuHI  Adam - Articulate Engineering Professor
         #   w0isTQPIXPrJVpmqw9nN  Conner - Measured, Calm and Direct
         #   UQoLnPXvf18gaKpLzfb8  Sawyer - Calm, Measured and Serious
-        voice_id="Zvx9L4NADtEscnEZhVgF",
+        voice_id="s7WUs3tvE4qL7jTY4B52",
         model="eleven_turbo_v2_5",
         # High stability — Sacks does not modulate. He drones.
         stability=0.75,

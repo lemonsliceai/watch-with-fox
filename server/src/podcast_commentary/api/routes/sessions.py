@@ -2,7 +2,7 @@ import logging
 from typing import Literal
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from livekit import api
 from pydantic import BaseModel
 
@@ -31,6 +31,11 @@ router = APIRouter()
 class CreateSessionRequest(BaseModel):
     video_url: str
     video_title: str | None = None
+    # Stable per-install id minted by the extension and persisted in
+    # chrome.storage.local. Lets pre-auth sessions be merged into a
+    # Clerk user post-signup. Optional for back-compat with older
+    # extension builds.
+    anonymous_id: str | None = None
 
 
 class RoomEntry(BaseModel):
@@ -64,8 +69,24 @@ def _persona_room_name(session_id: str, persona: str) -> str:
     return f"{session_id}-{persona}"
 
 
+def _user_id_from_authorization(authorization: str | None) -> str | None:
+    """Extract a Clerk user id from an Authorization header.
+
+    Stub for the future Clerk integration: today this always returns
+    None. When Clerk is wired up, verify the JWT here and return its
+    ``sub`` claim. Keeping the seam in place now means the route and
+    DB schema already carry user_id end-to-end — Clerk drop-in is a
+    one-function change rather than a schema migration + plumbing pass.
+    """
+    return None
+
+
 @router.post("/api/sessions", response_model=CreateSessionResponse)
-async def create_session_route(request: CreateSessionRequest):
+async def create_session_route(
+    request: CreateSessionRequest,
+    authorization: str | None = Header(default=None),
+):
+    user_id = _user_id_from_authorization(authorization)
     persona_names = _resolve_persona_names()
     # Primary is whichever persona is listed first in PERSONAS — that's
     # the room the LiveKit dispatch lands in and whose timing drives
@@ -88,6 +109,8 @@ async def create_session_route(request: CreateSessionRequest):
         request.video_title,
         rooms=persona_to_room,
         session_id=session_id,
+        user_id=user_id,
+        anonymous_id=request.anonymous_id,
     )
 
     # Per-persona startup data the agent uses to spin up an AgentSession

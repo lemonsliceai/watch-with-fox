@@ -6,13 +6,32 @@
 
 import { API_URL } from "../config.js";
 
+const ANONYMOUS_ID_KEY = "couchverse.anonymous_id";
+
+// Stable per-install id, persisted in chrome.storage.local. Sent on
+// every session creation so the server can later associate pre-auth
+// sessions with a Clerk user (UPDATE ... WHERE anonymous_id = $1).
+// Without this minted from day one, sessions captured before auth
+// ships are unmergeable into any future user account.
+async function getOrCreateAnonymousId() {
+  const stored = await chrome.storage.local.get(ANONYMOUS_ID_KEY);
+  let id = stored[ANONYMOUS_ID_KEY];
+  if (!id) {
+    id = crypto.randomUUID();
+    await chrome.storage.local.set({ [ANONYMOUS_ID_KEY]: id });
+  }
+  return id;
+}
+
 export async function createSessionApi(videoUrl, videoTitle) {
+  const anonymousId = await getOrCreateAnonymousId();
   const res = await fetch(`${API_URL}/api/sessions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       video_url: videoUrl,
       video_title: videoTitle,
+      anonymous_id: anonymousId,
     }),
   });
   if (!res.ok) {

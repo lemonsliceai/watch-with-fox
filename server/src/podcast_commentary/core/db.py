@@ -84,6 +84,27 @@ async def run_migrations() -> None:
         await conn.execute("""
             ALTER TABLE sessions ADD COLUMN IF NOT EXISTS rooms JSONB
         """)
+        # Identity columns. Both nullable: anonymous_id is a stable
+        # per-install id minted client-side (chrome.storage.local) so
+        # pre-auth sessions can be associated with a Clerk user post
+        # signup via UPDATE ... WHERE anonymous_id = $1. user_id is
+        # populated from the Clerk JWT once auth is wired; until then
+        # it stays NULL. Adding these now avoids an unattributable
+        # backlog of sessions between launch and the auth integration.
+        await conn.execute("""
+            ALTER TABLE sessions ADD COLUMN IF NOT EXISTS user_id TEXT
+        """)
+        await conn.execute("""
+            ALTER TABLE sessions ADD COLUMN IF NOT EXISTS anonymous_id TEXT
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_sessions_user_created
+            ON sessions(user_id, created_at DESC)
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_sessions_anonymous_created
+            ON sessions(anonymous_id, created_at DESC)
+        """)
         # Unified conversation log: every utterance by every speaker in the
         # room (podcast audio STT, agent TTS replies), plus system events
         # like rolling summaries. Enables historic replay and post-hoc
@@ -113,6 +134,8 @@ async def create_session(
     video_title: str | None = None,
     rooms: dict[str, str] | None = None,
     session_id: str | None = None,
+    user_id: str | None = None,
+    anonymous_id: str | None = None,
 ) -> str:
     """Insert a new session row and return its id.
 
@@ -126,20 +149,24 @@ async def create_session(
         if session_id is None:
             row = await conn.fetchrow(
                 """
-                INSERT INTO sessions (room_name, video_url, video_title, rooms)
-                VALUES ($1, $2, $3, $4::jsonb)
+                INSERT INTO sessions
+                    (room_name, video_url, video_title, rooms, user_id, anonymous_id)
+                VALUES ($1, $2, $3, $4::jsonb, $5, $6)
                 RETURNING id
                 """,
                 room_name,
                 video_url,
                 video_title,
                 json.dumps(rooms) if rooms else None,
+                user_id,
+                anonymous_id,
             )
         else:
             row = await conn.fetchrow(
                 """
-                INSERT INTO sessions (id, room_name, video_url, video_title, rooms)
-                VALUES ($1::uuid, $2, $3, $4, $5::jsonb)
+                INSERT INTO sessions
+                    (id, room_name, video_url, video_title, rooms, user_id, anonymous_id)
+                VALUES ($1::uuid, $2, $3, $4, $5::jsonb, $6, $7)
                 RETURNING id
                 """,
                 session_id,
@@ -147,6 +174,8 @@ async def create_session(
                 video_url,
                 video_title,
                 json.dumps(rooms) if rooms else None,
+                user_id,
+                anonymous_id,
             )
         return str(row["id"])
 

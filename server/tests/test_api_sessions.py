@@ -70,12 +70,16 @@ def client(monkeypatch):
         video_title: str | None = None,
         rooms: dict[str, str] | None = None,
         session_id: str | None = None,
+        user_id: str | None = None,
+        anonymous_id: str | None = None,
     ) -> str:
         captured["room_name"] = room_name
         captured["video_url"] = video_url
         captured["video_title"] = video_title
         captured["rooms"] = rooms
         captured["session_id"] = session_id
+        captured["user_id"] = user_id
+        captured["anonymous_id"] = anonymous_id
         return session_id or "stub-session-id"
 
     monkeypatch.setattr(sessions_module, "create_session", _fake_create_session)

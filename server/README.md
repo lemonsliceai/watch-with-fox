@@ -92,7 +92,7 @@ Every module (`prompts.py`, `angles.py`, `commentary.py`, `comedian.py`, `podcas
 
 ### Switching presets
 
-The active presets are selected by the `PERSONAS` env var in `server/.env` (comma-separated, defaults to `cat_girl,alien`). Each entry must match a filename in `fox_configs/` (without the `.py` extension).
+The active presets are selected by the `PERSONAS` env var in `server/.env` (comma-separated). The shipping default is `alien,cat_girl`; other presets in `fox_configs/` (e.g. `david_sacks`) are opt-in experiments — add them to `PERSONAS` to play with them. Each entry must match a filename in `fox_configs/` (without the `.py` extension). The first entry is the **primary** — it owns the user mic and STT pipeline.
 
 <details>
 <summary><b>Creating and testing a new preset</b></summary>
