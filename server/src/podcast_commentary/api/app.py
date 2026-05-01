@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from podcast_commentary.api.routes import personas, sessions
-from podcast_commentary.core.db import run_migrations, warm_pool
+from podcast_commentary.core.db import ensure_schema, warm_pool
 
 logging.basicConfig(level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
 
@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.INFO, format="%(name)s %(levelname)s: %(messag
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await warm_pool()
-    await run_migrations()
+    await ensure_schema()
     yield
 
 

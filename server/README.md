@@ -1,6 +1,6 @@
 <div align="center">
 
-# Couchverse — Server
+# Couchverse - Server
 
 Python 3.11+ backend: a **FastAPI HTTP server** and a **LiveKit AI agent** in two processes.
 
@@ -54,7 +54,7 @@ uv run python src/podcast_commentary/agent/main.py dev                          
 | Deploy agent (prod) | `lk agent deploy` |
 | Deploy API (prod) | `fly deploy` |
 
-## FoxConfig — tuning host behaviour
+## FoxConfig - tuning host behaviour
 
 Every knob that shapes a host — the system prompt, comedic angles, response CTAs, timing + cadence, and LLM/STT/TTS/VAD/avatar settings — lives in a single dataclass loaded once per agent process.
 
@@ -121,7 +121,7 @@ Loaded FoxConfig preset 'spicy'
 </details>
 
 > [!WARNING]
-> If `PERSONAS` contains a name that doesn't match a file in `fox_configs/`, the agent fails fast with a clear error — no silent fallback.
+> If `PERSONAS` contains a name that doesn't match a file in `fox_configs/`, the agent fails fast with a clear error - no silent fallback.
 
 ### Notes
 

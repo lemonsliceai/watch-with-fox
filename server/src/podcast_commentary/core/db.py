@@ -59,7 +59,14 @@ async def warm_pool() -> None:
     logger.info("Database pool warmed")
 
 
-async def run_migrations() -> None:
+async def ensure_schema() -> None:
+    """Create the schema on a fresh database. No-op once tables exist.
+
+    Pre-launch, single-tenant, no users to migrate — so we ship one
+    canonical schema rather than a migration ladder. If the schema
+    needs to evolve post-launch, switch to a real migration tool
+    (alembic) rather than re-introducing ad-hoc ALTER calls here.
+    """
     pool = await _get_pool()
     async with pool.acquire() as conn:
         await conn.execute("""
@@ -68,34 +75,14 @@ async def run_migrations() -> None:
                 video_url TEXT NOT NULL,
                 video_title TEXT,
                 room_name TEXT NOT NULL UNIQUE,
+                rooms JSONB,
+                user_id TEXT,
+                anonymous_id TEXT,
                 status TEXT DEFAULT 'created',
                 summary TEXT,
                 created_at TIMESTAMPTZ DEFAULT now(),
                 ended_at TIMESTAMPTZ
             )
-        """)
-        # Per-persona room mapping. Shape:
-        # {"<persona_name>": "<room_name>", ...}. JSONB over a side-table
-        # because sessions are short-lived and we never query by
-        # room_name — the agent receives its room/persona context via job
-        # metadata, not a DB lookup. The flat `room_name` column above
-        # holds the primary persona's room for quick lookups (status
-        # checks, joins from logs).
-        await conn.execute("""
-            ALTER TABLE sessions ADD COLUMN IF NOT EXISTS rooms JSONB
-        """)
-        # Identity columns. Both nullable: anonymous_id is a stable
-        # per-install id minted client-side (chrome.storage.local) so
-        # pre-auth sessions can be associated with a Clerk user post
-        # signup via UPDATE ... WHERE anonymous_id = $1. user_id is
-        # populated from the Clerk JWT once auth is wired; until then
-        # it stays NULL. Adding these now avoids an unattributable
-        # backlog of sessions between launch and the auth integration.
-        await conn.execute("""
-            ALTER TABLE sessions ADD COLUMN IF NOT EXISTS user_id TEXT
-        """)
-        await conn.execute("""
-            ALTER TABLE sessions ADD COLUMN IF NOT EXISTS anonymous_id TEXT
         """)
         await conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_sessions_user_created
@@ -105,10 +92,6 @@ async def run_migrations() -> None:
             CREATE INDEX IF NOT EXISTS idx_sessions_anonymous_created
             ON sessions(anonymous_id, created_at DESC)
         """)
-        # Unified conversation log: every utterance by every speaker in the
-        # room (podcast audio STT, agent TTS replies), plus system events
-        # like rolling summaries. Enables historic replay and post-hoc
-        # analysis of each session.
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS conversation_messages (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -123,9 +106,7 @@ async def run_migrations() -> None:
             CREATE INDEX IF NOT EXISTS idx_conversation_messages_session
             ON conversation_messages(session_id, created_at)
         """)
-        # Drop legacy unused table from earlier schema iterations.
-        await conn.execute("DROP TABLE IF EXISTS commentary_logs")
-    logger.info("Migrations complete")
+    logger.info("Schema ensured")
 
 
 async def create_session(

@@ -68,7 +68,7 @@ Each PersonaAgent uses a `FoxPhase` enum: INTRO → LISTENING → COMMENTATING. 
 
 - **Fire-and-forget tasks:** Never use bare `asyncio.create_task()`. Use `TaskSupervisor.fire_and_forget()` (in `agent/task_supervisor.py`), which tracks the task for bulk cancel on shutdown and attaches a done-callback that surfaces exceptions. The one deliberate exception is `Director._trip_shutdown_latch` — see the comment there.
 - **One `AvatarSession` per room:** every persona runs in its own `rtc.Room` (`{session_id}-{persona}`) so each room hosts exactly one LemonSlice `AvatarSession`. This is what removed the second-avatar `lk.playback_finished` RPC drops we used to see — running >1 `AvatarSession` in one room is explicitly unsupported (livekit/agents #3510, #4315). `PlayoutWaiter` now just `asyncio.wait_for`s `SpeechHandle.wait_for_playout()` against a hard upper bound; the old robust-fallback ladder is gone. Don't reintroduce two `AvatarSession`s in a single room.
-- **Database migrations** run inline in the FastAPI lifespan hook via `run_migrations()` in db.py. All DDL is idempotent (`CREATE TABLE IF NOT EXISTS`).
+- **Database schema** is created on first boot by `ensure_schema()` in db.py, called from the FastAPI lifespan hook. It's `CREATE TABLE IF NOT EXISTS` only — there is no migration ladder. If the schema needs to evolve post-launch, switch to alembic rather than re-introducing ad-hoc `ALTER` calls.
 - **Deployment configs** (`fly.toml`, `livekit.toml`) are gitignored. Copy from `.example` files and fill in your values.
 
 ## Code style
